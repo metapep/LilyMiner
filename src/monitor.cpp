@@ -20,6 +20,7 @@ extern uint64_t upTime;
 
 extern uint32_t shares; // increase if blockhash has 32 bits of zeroes
 extern uint32_t valids; // increased if blockhash <= targethalfshares
+extern uint32_t acceptedShares; // accepted by pool
 
 extern double best_diff; // track best diff
 
@@ -32,11 +33,188 @@ bool invertColors = false;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
 unsigned int bitcoin_price=0;
-String current_block = "793261";
+String current_block = "0";
 global_data gData;
 pool_data pData;
 String poolAPIUrl;
+String poolNetworkStatsUrl;
+unsigned long mGlobalUpdate = 0;
+unsigned long mHeightUpdate = 0;
+unsigned long mBTCUpdate = 0;
 
+
+static String formatHashrateEH(double hashrateHps)
+{
+    if (hashrateHps <= 0) {
+        return "0.00";
+    }
+
+    const double exaHash = hashrateHps / 1000000000000000000.0;
+    char output[16] = {0};
+    if (exaHash >= 100.0) {
+        snprintf(output, sizeof(output), "%.0f", exaHash);
+    } else if (exaHash >= 10.0) {
+        snprintf(output, sizeof(output), "%.1f", exaHash);
+    } else {
+        snprintf(output, sizeof(output), "%.2f", exaHash);
+    }
+    return String(output);
+}
+
+static String formatDifficultyT(double difficulty)
+{
+    if (difficulty <= 0) {
+        return "0.00T";
+    }
+
+    const double teraDifficulty = difficulty / 1000000000000.0;
+    char output[16] = {0};
+    if (teraDifficulty >= 100.0) {
+        snprintf(output, sizeof(output), "%.0fT", teraDifficulty);
+    } else if (teraDifficulty >= 10.0) {
+        snprintf(output, sizeof(output), "%.1fT", teraDifficulty);
+    } else {
+        snprintf(output, sizeof(output), "%.2fT", teraDifficulty);
+    }
+    return String(output);
+}
+
+static String getPoolNetworkStatsUrl(void)
+{
+    String base = getPoolAPIUrl();
+    int apiClientIdx = base.indexOf("/api/client/");
+    if (apiClientIdx > 0) {
+        return base.substring(0, apiClientIdx) + "/api/stats";
+    }
+
+    apiClientIdx = base.indexOf("/api/client");
+    if (apiClientIdx > 0) {
+        return base.substring(0, apiClientIdx) + "/api/stats";
+    }
+
+    if (base.endsWith("/")) {
+        base.remove(base.length() - 1);
+    }
+    return base + "/api/stats";
+}
+
+static bool allowExternalNetworkFallback(void)
+{
+    String configuredBase = String(Settings.PoolApiBase);
+    configuredBase.trim();
+    if (configuredBase.length() > 0) {
+        return false;
+    }
+
+    String poolAddress = Settings.PoolAddress;
+    poolAddress.trim();
+    poolAddress.toLowerCase();
+
+    return (poolAddress == "public-pool.io"
+        || poolAddress == "pool.nerdminers.org"
+        || poolAddress == "pool.sethforprivacy.com"
+        || poolAddress == "pool.solomining.de");
+}
+
+static bool updatePoolNetworkStats(bool forceRefresh)
+{
+    const unsigned long now = millis();
+    if (!forceRefresh && mGlobalUpdate != 0 && now - mGlobalUpdate <= UPDATE_Global_min * 60 * 1000) {
+        return true;
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        return false;
+    }
+
+    poolNetworkStatsUrl = getPoolNetworkStatsUrl();
+
+    HTTPClient http;
+    http.setTimeout(10000);
+    try {
+        http.begin(poolNetworkStatsUrl);
+        const int httpCode = http.GET();
+        if (httpCode != HTTP_CODE_OK) {
+            Serial.println("Pool stats HTTP error " + String(httpCode) + " from " + poolNetworkStatsUrl);
+            http.end();
+            return false;
+        }
+
+        String payload = http.getString();
+        http.end();
+
+        StaticJsonDocument<1024> doc;
+        DeserializationError error = deserializeJson(doc, payload);
+        if (error) {
+            Serial.println("Pool stats JSON parse failed from " + poolNetworkStatsUrl);
+            return false;
+        }
+
+        long blockHeight = 0;
+        if (doc.containsKey("blockHeight")) {
+            blockHeight = doc["blockHeight"].as<long>();
+        } else if (doc.containsKey("blocks")) {
+            blockHeight = doc["blocks"].as<long>();
+        }
+
+        int blocksTillHalving = 0;
+        if (doc.containsKey("blocksTillHalving")) {
+            blocksTillHalving = doc["blocksTillHalving"].as<int>();
+        } else if (blockHeight > 0) {
+            blocksTillHalving = (((blockHeight / HALVING_BLOCKS) + 1) * HALVING_BLOCKS) - blockHeight;
+        }
+
+        int mediumFeeSatVb = gData.halfHourFee;
+        if (doc.containsKey("mediumFeeSatVb")) {
+            mediumFeeSatVb = doc["mediumFeeSatVb"].as<int>();
+        } else if (doc.containsKey("halfHourFee")) {
+            mediumFeeSatVb = doc["halfHourFee"].as<int>();
+        }
+
+        double networkDifficulty = 0;
+        if (doc.containsKey("networkDifficulty")) {
+            networkDifficulty = doc["networkDifficulty"].as<double>();
+        } else if (doc.containsKey("difficulty")) {
+            networkDifficulty = doc["difficulty"].as<double>();
+        }
+
+        double networkHashrate = 0;
+        if (doc.containsKey("networkHashrate")) {
+            networkHashrate = doc["networkHashrate"].as<double>();
+        } else if (doc.containsKey("networkhashps")) {
+            networkHashrate = doc["networkhashps"].as<double>();
+        } else if (doc.containsKey("currentHashrate")) {
+            networkHashrate = doc["currentHashrate"].as<double>();
+        }
+
+        if (doc.containsKey("priceUsd")) {
+            bitcoin_price = (unsigned int)doc["priceUsd"].as<double>();
+        } else if (doc.containsKey("btcPriceUsd")) {
+            bitcoin_price = (unsigned int)doc["btcPriceUsd"].as<double>();
+        }
+
+        if (blockHeight > 0) {
+            current_block = String(blockHeight);
+            gData.currentBlock = current_block;
+        }
+        gData.remainingBlocks = blocksTillHalving;
+        gData.progressPercent = blocksTillHalving > 0
+            ? ((HALVING_BLOCKS - blocksTillHalving) * 100.0f / HALVING_BLOCKS)
+            : 0;
+        gData.halfHourFee = mediumFeeSatVb;
+        gData.difficulty = formatDifficultyT(networkDifficulty);
+        gData.globalHash = formatHashrateEH(networkHashrate);
+
+        mGlobalUpdate = now;
+        mHeightUpdate = now;
+        mBTCUpdate = now;
+        return true;
+    } catch (...) {
+        Serial.println("Pool stats request failed for " + poolNetworkStatsUrl);
+        http.end();
+        return false;
+    }
+}
 
 void setup_monitor(void){
     /******** TIME ZONE SETTING *****/
@@ -54,13 +232,19 @@ void setup_monitor(void){
 #endif
 }
 
-unsigned long mGlobalUpdate =0;
-
 void updateGlobalData(void){
     
     if((mGlobalUpdate == 0) || (millis() - mGlobalUpdate > UPDATE_Global_min * 60 * 1000)){
     
         if (WiFi.status() != WL_CONNECTED) return;
+
+        if (updatePoolNetworkStats(true)) {
+            return;
+        }
+
+        if (!allowExternalNetworkFallback()) {
+            return;
+        }
             
         //Make first API call to get global hash and current difficulty
         HTTPClient http;
@@ -120,13 +304,19 @@ void updateGlobalData(void){
     }
 }
 
-unsigned long mHeightUpdate = 0;
-
 String getBlockHeight(void){
     
     if((mHeightUpdate == 0) || (millis() - mHeightUpdate > UPDATE_Height_min * 60 * 1000)){
     
         if (WiFi.status() != WL_CONNECTED) return current_block;
+
+        if (updatePoolNetworkStats(true)) {
+            return current_block;
+        }
+
+        if (!allowExternalNetworkFallback()) {
+            return current_block;
+        }
             
         HTTPClient http;
         http.setTimeout(10000);
@@ -152,13 +342,23 @@ String getBlockHeight(void){
   return current_block;
 }
 
-unsigned long mBTCUpdate = 0;
-
 String getBTCprice(void){
     
     if((mBTCUpdate == 0) || (millis() - mBTCUpdate > UPDATE_BTC_min * 60 * 1000)){
     
         if (WiFi.status() != WL_CONNECTED) {
+            static char price_buffer[16];
+            snprintf(price_buffer, sizeof(price_buffer), "$%u", bitcoin_price);
+            return String(price_buffer);
+        }
+
+        if (updatePoolNetworkStats(true)) {
+            static char price_buffer[16];
+            snprintf(price_buffer, sizeof(price_buffer), "$%u", bitcoin_price);
+            return String(price_buffer);
+        }
+
+        if (!allowExternalNetworkFallback()) {
             static char price_buffer[16];
             snprintf(price_buffer, sizeof(price_buffer), "$%u", bitcoin_price);
             return String(price_buffer);
@@ -335,7 +535,7 @@ mining_data getMiningData(unsigned long mElapsed)
   int days = tm / 24;
   sprintf(timeMining, "%01d  %02d:%02d:%02d", days, hours, mins, secs);
 
-  data.completedShares = shares;
+  data.completedShares = acceptedShares;
   data.totalMHashes = Mhashes;
   data.totalKHashes = totalKHashes;
   data.currentHashRate = getCurrentHashRate(mElapsed);
@@ -353,7 +553,7 @@ clock_data getClockData(unsigned long mElapsed)
 {
   clock_data data;
 
-  data.completedShares = shares;
+  data.completedShares = acceptedShares;
   data.totalKHashes = totalKHashes;
   data.currentHashRate = getCurrentHashRate(mElapsed);
   data.btcPrice = getBTCprice();
@@ -381,7 +581,7 @@ coin_data getCoinData(unsigned long mElapsed)
 
   updateGlobalData(); // Update gData vars asking mempool APIs
 
-  data.completedShares = shares;
+  data.completedShares = acceptedShares;
   data.totalKHashes = totalKHashes;
   data.currentHashRate = getCurrentHashRate(mElapsed);
   data.btcPrice = getBTCprice();
@@ -392,20 +592,42 @@ coin_data getCoinData(unsigned long mElapsed)
   data.economyFee = String(gData.economyFee);
   data.minimumFee = String(gData.minimumFee);
 #endif
-  data.halfHourFee = String(gData.halfHourFee) + " sat/vB";
+  data.halfHourFee = String(gData.halfHourFee) + " jat/vB";
   data.netwrokDifficulty = gData.difficulty;
   data.globalHashRate = gData.globalHash;
   data.blockHeight = getBlockHeight();
 
   unsigned long currentBlock = data.blockHeight.toInt();
-  unsigned long remainingBlocks = (((currentBlock / HALVING_BLOCKS) + 1) * HALVING_BLOCKS) - currentBlock;
-  data.progressPercent = (HALVING_BLOCKS - remainingBlocks) * 100 / HALVING_BLOCKS;
+  unsigned long remainingBlocks = gData.remainingBlocks > 0
+    ? (unsigned long)gData.remainingBlocks
+    : (((currentBlock / HALVING_BLOCKS) + 1) * HALVING_BLOCKS) - currentBlock;
+  data.progressPercent = gData.remainingBlocks > 0
+    ? gData.progressPercent
+    : (HALVING_BLOCKS - remainingBlocks) * 100 / HALVING_BLOCKS;
   data.remainingBlocks = String(remainingBlocks) + " BLOCKS";
 
   return data;
 }
 
 String getPoolAPIUrl(void) {
+    String configuredBase = String(Settings.PoolApiBase);
+    configuredBase.trim();
+
+    if (configuredBase.length() > 0) {
+        configuredBase.replace("\\", "/");
+        if (!configuredBase.endsWith("/")) {
+            configuredBase += "/";
+        }
+        if (configuredBase.indexOf("/api/client/") > 0) {
+            poolAPIUrl = configuredBase;
+        } else if (configuredBase.indexOf("/api/client") > 0) {
+            poolAPIUrl = configuredBase + "/";
+        } else {
+            poolAPIUrl = configuredBase + "api/client/";
+        }
+        return poolAPIUrl;
+    }
+
     poolAPIUrl = String(getPublicPool);
     if (Settings.PoolAddress == "public-pool.io") {
         poolAPIUrl = "https://public-pool.io:40557/api/client/";
@@ -417,6 +639,7 @@ String getPoolAPIUrl(void) {
         else {
             switch (Settings.PoolPort) {
                 case 3333:
+                    poolAPIUrl = "http://" + Settings.PoolAddress + ":3334/api/client/";
                     if (Settings.PoolAddress == "pool.sethforprivacy.com")
                         poolAPIUrl = "https://pool.sethforprivacy.com/api/client/";
                     if (Settings.PoolAddress == "pool.solomining.de")
@@ -440,6 +663,7 @@ pool_data getPoolData(void){
     //pool_data pData;    
     if((mPoolUpdate == 0) || (millis() - mPoolUpdate > UPDATE_POOL_min * 60 * 1000)){      
         if (WiFi.status() != WL_CONNECTED) return pData;            
+        poolAPIUrl = getPoolAPIUrl();
         //Make first API call to get global hash and current difficulty
         HTTPClient http;
         http.setTimeout(10000);        

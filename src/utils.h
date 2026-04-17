@@ -22,7 +22,10 @@ double le256todouble(const void *target);
 double diff_from_target(void *target);
 bool isSha256Valid(const void* sha256);
 miner_data calculateMiningData(mining_subscribe& mWorker, mining_job mJob);
-bool checkValid(unsigned char* hash, unsigned char* target);
+bool checkValid(const unsigned char* hash, const unsigned char* target);
+#ifdef DEBUG_VALID_BLOCK_CHECK
+bool checkValidSelfTest();
+#endif
 void suffix_string(double val, char *buf, size_t bufsiz, int sigdigits);
 
 uint32_t crc32_reset();

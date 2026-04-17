@@ -67,7 +67,7 @@ typedef struct{
 }global_data;
 
 typedef struct {
-  String completedShares;
+  String completedShares; // accepted shares
   String totalMHashes;
   String totalKHashes;
   String currentHashRate;
@@ -80,7 +80,7 @@ typedef struct {
 }mining_data;
 
 typedef struct {
-  String completedShares;
+  String completedShares; // accepted shares
   String totalKHashes;
   String currentHashRate;
   String btcPrice;
@@ -98,7 +98,7 @@ typedef struct {
 }clock_data_t;
 
 typedef struct {
-  String completedShares;
+  String completedShares; // accepted shares
   String totalKHashes;
   String currentHashRate;
   String btcPrice;

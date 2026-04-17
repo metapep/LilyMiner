@@ -95,8 +95,8 @@ void amoledDisplay_MinerScreen(unsigned long mElapsed)
   render.rdrawString(data.timeMining.c_str(), X(315), Y(104), 0xDEDB);
 
   // Valid Blocks
-  render.setFontSize(FS(24));
-  render.drawString(data.valids.c_str(), X(285), Y(56), 0xDEDB);
+  render.setFontSize(FS(18));
+  render.cdrawString(data.valids.c_str(), X(287), Y(60), 0xDEDB);
 
   // Print Temp
   render.setFontSize(FS(10));

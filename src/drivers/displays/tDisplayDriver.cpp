@@ -91,8 +91,8 @@ void tDisplay_MinerScreen(unsigned long mElapsed)
   render.rdrawString(data.timeMining.c_str(), 315, 104, 0xDEDB);
 
   // Valid Blocks
-  render.setFontSize(24);
-  render.drawString(data.valids.c_str(), 285, 56, 0xDEDB);
+  render.setFontSize(18);
+  render.cdrawString(data.valids.c_str(), 287, 60, 0xDEDB);
 
   // Print Temp
   render.setFontSize(10);
@@ -270,7 +270,7 @@ void tDisplay_DoLedStuff(unsigned long frame)
 {
 }
 
-CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_ClockScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice};
+CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_ClockScreen, tDisplay_GlobalHashScreen};
 
 DisplayDriver tDisplayDriver = {
     tDisplay_Init,

@@ -51,6 +51,7 @@ uint64_t upTime = 0;
 
 volatile uint32_t shares; // increase if blockhash has 32 bits of zeroes
 volatile uint32_t valids; // increased if blockhash <= target
+volatile uint32_t acceptedShares; // accepted by pool (Stratum success)
 
 // Track best diff
 double best_diff = 0.0;
@@ -105,7 +106,7 @@ bool checkPoolConnection(void) {
 //checks if pool is not sending any data to reconnect again.
 //Even connection could be alive, pool could stop sending new job NOTIFY
 unsigned long mStart0Hashrate = 0;
-bool checkPoolInactivity(unsigned int keepAliveTime, unsigned long inactivityTime){ 
+bool checkPoolInactivity(unsigned int keepAliveTime, unsigned long inactivityTime, double suggestedDifficulty){ 
 
     unsigned long currentKHashes = (Mhashes*1000) + hashes/1000;
     unsigned long elapsedKHs = currentKHashes - totalKHashes;
@@ -121,7 +122,7 @@ bool checkPoolInactivity(unsigned int keepAliveTime, unsigned long inactivityTim
       mLastTXtoPool = time_now;
       Serial.println("  Sending  : KeepAlive suggest_difficulty");
       //if (client.print("{}\n") == 0) {
-      tx_suggest_difficulty(client, DEFAULT_DIFFICULTY);
+      tx_suggest_difficulty(client, suggestedDifficulty);
       /*if(tx_suggest_difficulty(client, DEFAULT_DIFFICULTY)){
         Serial.println("  Sending keepAlive to pool -> Detected client disconnected");
         return true;
@@ -223,6 +224,10 @@ void runStratumWorker(void *name) {
   Serial.println("");
   Serial.printf("\n[WORKER] Started. Running %s on core %d\n", (char *)name, xPortGetCoreID());
 
+#ifdef DEBUG_VALID_BLOCK_CHECK
+  checkValidSelfTest();
+#endif
+
   #ifdef DEBUG_MEMORY
   Serial.printf("### [Total Heap / Free heap / Min free heap]: %d / %d / %d \n", ESP.getHeapSize(), ESP.getFreeHeap(), ESP.getMinFreeHeap());
   #endif
@@ -298,7 +303,7 @@ void runStratumWorker(void *name) {
     }
 
     //Check if pool is down for almost 5minutes and then restart connection with pool (1min=600000ms)
-    if(checkPoolInactivity(KEEPALIVE_TIME_ms, POOLINACTIVITY_TIME_ms)){
+    if(checkPoolInactivity(KEEPALIVE_TIME_ms, POOLINACTIVITY_TIME_ms, currentPoolDifficulty)){
       //Restart connection
       Serial.println("  Detected more than 2 min without data form stratum server. Closing socket and reopening...");
       client.stop();
@@ -441,6 +446,7 @@ void runStratumWorker(void *name) {
                                         {
                                           if (itt->second->diff > best_diff)
                                             best_diff = itt->second->diff;
+                                          acceptedShares++;
                                           if (itt->second->is32bit)
                                             shares++;
                                           if (itt->second->isValid)
@@ -567,11 +573,8 @@ void runStratumWorker(void *name) {
         std::shared_ptr<Submition> submition = std::make_shared<Submition>();
         submition->diff = res->difficulty;
         submition->is32bit = (res->hash[29] == 0 && res->hash[28] == 0);
-        if (submition->is32bit)
-        {
-          submition->isValid = checkValid(res->hash, mMiner.bytearray_target);
-        } else
-          submition->isValid = false;
+        // Valid block candidates are determined by network target, not 32-bit share threshold.
+        submition->isValid = checkValid(res->hash, mMiner.bytearray_target);
 
         s_submition_map.insert(std::make_pair(sumbit_id, submition));
         if (s_submition_map.size() > 32)
@@ -1142,11 +1145,13 @@ void restoreStat() {
   size_t required_size = sizeof(double);
   nvs_get_blob(stat_handle, "best_diff", &best_diff, &required_size);
   nvs_get_u32(stat_handle, "Mhashes", &Mhashes);
-  uint32_t nv_shares, nv_valids;
+  uint32_t nv_shares = 0, nv_valids = 0, nv_acceptedShares = 0;
   nvs_get_u32(stat_handle, "shares", &nv_shares);
   nvs_get_u32(stat_handle, "valids", &nv_valids);
+  nvs_get_u32(stat_handle, "acceptedShares", &nv_acceptedShares);
   shares = nv_shares;
   valids = nv_valids;
+  acceptedShares = nv_acceptedShares;
   nvs_get_u32(stat_handle, "templates", &templates);
   nvs_get_u64(stat_handle, "upTime", &upTime);
 
@@ -1155,6 +1160,7 @@ void restoreStat() {
   crc = crc32_add(crc, &Mhashes, sizeof(Mhashes));
   crc = crc32_add(crc, &nv_shares, sizeof(nv_shares));
   crc = crc32_add(crc, &nv_valids, sizeof(nv_valids));
+  crc = crc32_add(crc, &nv_acceptedShares, sizeof(nv_acceptedShares));
   crc = crc32_add(crc, &templates, sizeof(templates));
   crc = crc32_add(crc, &upTime, sizeof(upTime));
   crc = crc32_finish(crc);
@@ -1167,6 +1173,7 @@ void restoreStat() {
     Mhashes = 0;
     shares = 0;
     valids = 0;
+    acceptedShares = 0;
     templates = 0;
     upTime = 0;
   }
@@ -1179,6 +1186,7 @@ void saveStat() {
   nvs_set_u32(stat_handle, "Mhashes", Mhashes);
   nvs_set_u32(stat_handle, "shares", shares);
   nvs_set_u32(stat_handle, "valids", valids);
+  nvs_set_u32(stat_handle, "acceptedShares", acceptedShares);
   nvs_set_u32(stat_handle, "templates", templates);
   nvs_set_u64(stat_handle, "upTime", upTime);
 
@@ -1187,8 +1195,10 @@ void saveStat() {
   crc = crc32_add(crc, &Mhashes, sizeof(Mhashes));
   uint32_t nv_shares = shares;
   uint32_t nv_valids = valids;
+  uint32_t nv_acceptedShares = acceptedShares;
   crc = crc32_add(crc, &nv_shares, sizeof(nv_shares));
   crc = crc32_add(crc, &nv_valids, sizeof(nv_valids));
+  crc = crc32_add(crc, &nv_acceptedShares, sizeof(nv_acceptedShares));
   crc = crc32_add(crc, &templates, sizeof(templates));
   crc = crc32_add(crc, &upTime, sizeof(upTime));
   crc = crc32_finish(crc);
@@ -1197,7 +1207,7 @@ void saveStat() {
 
 void resetStat() {
     Serial.printf("[MONITOR] Resetting NVS stats\n");
-    templates = hashes = Mhashes = totalKHashes = elapsedKHs = upTime = shares = valids = 0;
+    templates = hashes = Mhashes = totalKHashes = elapsedKHs = upTime = shares = valids = acceptedShares = 0;
     best_diff = 0.0;
     saveStat();
 }

@@ -34,6 +34,94 @@ nvMemory nvMem;
 
 extern SDCard SDCrd;
 
+static int parsePoolPort(const String& value)
+{
+    if (value.length() == 0) {
+        return 0;
+    }
+
+    for (unsigned int i = 0; i < value.length(); ++i) {
+        const char c = value.charAt(i);
+        if (c < '0' || c > '9') {
+            return 0;
+        }
+    }
+
+    const long port = value.toInt();
+    if (port < 1 || port > 65535) {
+        return 0;
+    }
+
+    return (int)port;
+}
+
+static void normalizePoolEndpoint(TSettings* settings)
+{
+    String endpoint = settings->PoolAddress;
+    endpoint.trim();
+    if (endpoint.length() == 0) {
+        return;
+    }
+
+    const int schemeIdx = endpoint.indexOf("://");
+    if (schemeIdx >= 0) {
+        endpoint = endpoint.substring(schemeIdx + 3);
+    }
+
+    const int authIdx = endpoint.lastIndexOf('@');
+    if (authIdx >= 0) {
+        endpoint = endpoint.substring(authIdx + 1);
+    }
+
+    int stopIdx = endpoint.indexOf('/');
+    if (stopIdx >= 0) {
+        endpoint = endpoint.substring(0, stopIdx);
+    }
+    stopIdx = endpoint.indexOf('?');
+    if (stopIdx >= 0) {
+        endpoint = endpoint.substring(0, stopIdx);
+    }
+    stopIdx = endpoint.indexOf('#');
+    if (stopIdx >= 0) {
+        endpoint = endpoint.substring(0, stopIdx);
+    }
+
+    endpoint.trim();
+    if (endpoint.length() == 0) {
+        return;
+    }
+
+    int parsedPort = 0;
+    if (endpoint.startsWith("[")) {
+        const int closeIdx = endpoint.indexOf(']');
+        if (closeIdx > 1) {
+            String host = endpoint.substring(1, closeIdx);
+            if (closeIdx + 1 < endpoint.length() && endpoint.charAt(closeIdx + 1) == ':') {
+                parsedPort = parsePoolPort(endpoint.substring(closeIdx + 2));
+            }
+            endpoint = host;
+        }
+    } else {
+        const int firstColon = endpoint.indexOf(':');
+        const int lastColon = endpoint.lastIndexOf(':');
+        if (firstColon > 0 && firstColon == lastColon) {
+            const int maybePort = parsePoolPort(endpoint.substring(firstColon + 1));
+            if (maybePort > 0) {
+                parsedPort = maybePort;
+                endpoint = endpoint.substring(0, firstColon);
+            }
+        }
+    }
+
+    endpoint.trim();
+    if (endpoint.length() > 0) {
+        settings->PoolAddress = endpoint;
+    }
+    if (parsedPort > 0) {
+        settings->PoolPort = parsedPort;
+    }
+}
+
 String readCustomAPName() {
     Serial.println("DEBUG: Attempting to read custom AP name from flash at 0x3F0000...");
     
@@ -139,7 +227,7 @@ void init_WifiManager()
     
     // Check for custom AP name from flasher config, otherwise use default
     String customAPName = readCustomAPName();
-    const char* apName = customAPName.length() > 0 ? customAPName.c_str() : DEFAULT_SSID;
+    const char* apName = customAPName.length() > 0 ? customAPName.c_str() : DEFAULT_AP_SSID;
 
     //Init pin 15 to eneble 5V external power (LilyGo bug)
 #ifdef PIN_ENABLE5V
@@ -179,6 +267,9 @@ void init_WifiManager()
     // Free the memory from SDCard class 
     SDCrd.terminate();
     
+    // Accept PoolUrl formats such as stratum+tcp://host:port
+    normalizePoolEndpoint(&Settings);
+    
     // Reset settings (only for development)
     //wm.resetSettings();
 
@@ -213,11 +304,14 @@ void init_WifiManager()
     // Text box (Number) - 7 characters maximum
     WiFiManagerParameter port_text_box_num("Poolport", "Pool port", convertedValue, 7);
 
+    // Optional explicit API base for worker stats endpoint (e.g. http://host:3334/api/client/)
+    WiFiManagerParameter pool_api_text_box("PoolApiBase", "Pool API base (optional)", Settings.PoolApiBase, 120);
+
     // Text box (String) - 80 characters maximum
     //WiFiManagerParameter password_text_box("Poolpassword", "Pool password (Optional)", Settings.PoolPassword, 80);
 
     // Text box (String) - 80 characters maximum
-    WiFiManagerParameter addr_text_box("btcAddress", "Your BTC address", Settings.BtcWallet, 80);
+    WiFiManagerParameter addr_text_box("minerAddress", "Your miner address", Settings.BtcWallet, 80);
 
   // Text box (Number) - 2 characters maximum
   char charZone[6];
@@ -238,6 +332,7 @@ void init_WifiManager()
   // Add all defined parameters
   wm.addParameter(&pool_text_box);
   wm.addParameter(&port_text_box_num);
+  wm.addParameter(&pool_api_text_box);
   wm.addParameter(&password_text_box);
   wm.addParameter(&addr_text_box);
   wm.addParameter(&time_text_box_num);
@@ -268,7 +363,7 @@ void init_WifiManager()
         wm.setConfigPortalBlocking(true); //Hacemos que el portal SI bloquee el firmware
         drawSetupScreen();
         mMonitor.NerdStatus = NM_Connecting;
-        wm.startConfigPortal(apName, DEFAULT_WIFIPW);
+        wm.startConfigPortal(apName, DEFAULT_AP_WIFIPW);
 
         if (shouldSaveConfig)
         {
@@ -276,6 +371,8 @@ void init_WifiManager()
             Serial.println("failed to connect and hit timeout");
             Settings.PoolAddress = pool_text_box.getValue();
             Settings.PoolPort = atoi(port_text_box_num.getValue());
+            normalizePoolEndpoint(&Settings);
+            strncpy(Settings.PoolApiBase, pool_api_text_box.getValue(), sizeof(Settings.PoolApiBase));
             strncpy(Settings.PoolPassword, password_text_box.getValue(), sizeof(Settings.PoolPassword));
             strncpy(Settings.BtcWallet, addr_text_box.getValue(), sizeof(Settings.BtcWallet));
             Settings.Timezone = atoi(time_text_box_num.getValue());
@@ -302,13 +399,15 @@ void init_WifiManager()
         wm.setConfigPortalBlocking(true);
         wm.setEnableConfigPortal(true);
         // if (!wm.autoConnect(Settings.WifiSSID.c_str(), Settings.WifiPW.c_str()))
-        if (!wm.autoConnect(apName, DEFAULT_WIFIPW))
+        if (!wm.autoConnect(apName, DEFAULT_AP_WIFIPW))
         {
             Serial.println("Failed to connect to configured WIFI, and hit timeout");
             if (shouldSaveConfig) {
                 // Save new config            
                 Settings.PoolAddress = pool_text_box.getValue();
                 Settings.PoolPort = atoi(port_text_box_num.getValue());
+                normalizePoolEndpoint(&Settings);
+                strncpy(Settings.PoolApiBase, pool_api_text_box.getValue(), sizeof(Settings.PoolApiBase));
                 strncpy(Settings.PoolPassword, password_text_box.getValue(), sizeof(Settings.PoolPassword));
                 strncpy(Settings.BtcWallet, addr_text_box.getValue(), sizeof(Settings.BtcWallet));
                 Settings.Timezone = atoi(time_text_box_num.getValue());
@@ -346,8 +445,13 @@ void init_WifiManager()
 
         //Convert the number value
         Settings.PoolPort = atoi(port_text_box_num.getValue());
+        normalizePoolEndpoint(&Settings);
         Serial.print("portNumber: ");
         Serial.println(Settings.PoolPort);
+
+        strncpy(Settings.PoolApiBase, pool_api_text_box.getValue(), sizeof(Settings.PoolApiBase));
+        Serial.print("poolApiBase: ");
+        Serial.println(Settings.PoolApiBase);
 
         // Copy the string value
         strncpy(Settings.PoolPassword, password_text_box.getValue(), sizeof(Settings.PoolPassword));
@@ -388,8 +492,13 @@ void init_WifiManager()
 
     //Convert the number value
     Settings.PoolPort = atoi(port_text_box_num.getValue());
+    normalizePoolEndpoint(&Settings);
     Serial.print("portNumber: ");
     Serial.println(Settings.PoolPort);
+
+    strncpy(Settings.PoolApiBase, pool_api_text_box.getValue(), sizeof(Settings.PoolApiBase));
+    Serial.print("poolApiBase: ");
+    Serial.println(Settings.PoolApiBase);
 
     // Copy the string value
     strncpy(Settings.PoolPassword, password_text_box.getValue(), sizeof(Settings.PoolPassword));

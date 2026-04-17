@@ -73,7 +73,7 @@ void m5stackDisplay_NoScreen(unsigned long mElapsed)
   M5.Lcd.print("Total hashes  : "); M5.Lcd.setTextColor(GREEN); M5.Lcd.print(data.totalKHashes); M5.Lcd.setTextColor(WHITE); M5.Lcd.println(" KH");
   M5.Lcd.print("Block templ.  : "); M5.Lcd.setTextColor(YELLOW); M5.Lcd.println(data.templates); M5.Lcd.setTextColor(WHITE);
   M5.Lcd.print("Best dificulty: "); M5.Lcd.setTextColor(YELLOW); M5.Lcd.println(data.bestDiff); M5.Lcd.setTextColor(WHITE);
-  M5.Lcd.print("Shares 32bits : "); M5.Lcd.setTextColor(YELLOW); M5.Lcd.println(data.completedShares); M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print("Accepted shrs : "); M5.Lcd.setTextColor(YELLOW); M5.Lcd.println(data.completedShares); M5.Lcd.setTextColor(WHITE);
   M5.Lcd.print("Valid blocks  : "); M5.Lcd.setTextColor(RED); M5.Lcd.println(data.valids); M5.Lcd.setTextColor(WHITE);
   M5.Lcd.println("");
   M5.Lcd.drawLine(0,200,320,200,GREENYELLOW);

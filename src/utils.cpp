@@ -122,30 +122,79 @@ bool isSha256Valid(const void* sha256)
 /****************** PREMINING CALCULATIONS ********************/
 
 
-bool checkValid(unsigned char* hash, unsigned char* target) {
-  bool valid = true;
+bool checkValid(const unsigned char* hash, const unsigned char* target) {
   unsigned char diff_target[32];
-  memcpy(diff_target, &target, 32);
-  //convert target to little endian for comparison
-  reverse_bytes(diff_target, 32);
+  // copy target bytes (not the pointer address) and convert to little endian
+  memcpy(diff_target, target, sizeof(diff_target));
+  reverse_bytes(diff_target, sizeof(diff_target));
 
-  for(uint8_t i=31; i>=0; i--) {
-    if(hash[i] > diff_target[i]) {
-      valid = false;
-      break;
+  // Compare hash and target as little-endian 256-bit integers.
+  // Start from MSB (index 31) and stop at first difference.
+  for (int i = 31; i >= 0; --i) {
+    if (hash[i] < diff_target[i]) {
+      return true;
+    }
+    if (hash[i] > diff_target[i]) {
+      return false;
     }
   }
 
-  #ifdef DEBUG_MINING
-  if (valid) {
-    Serial.print("\tvalid : ");
-    for (size_t i = 0; i < 32; i++)
-        Serial.printf("%02x ", hash[i]);
-    Serial.println();
-  }
-  #endif
-  return valid;
+  // Equal hash and target is still valid.
+  return true;
 }
+
+#ifdef DEBUG_VALID_BLOCK_CHECK
+static void increment_le256(uint8_t* value)
+{
+  for (size_t i = 0; i < 32; ++i) {
+    if (++value[i] != 0) {
+      break;
+    }
+  }
+}
+
+static void decrement_le256(uint8_t* value)
+{
+  for (size_t i = 0; i < 32; ++i) {
+    uint8_t before = value[i];
+    value[i] = before - 1;
+    if (before != 0) {
+      break;
+    }
+  }
+}
+
+bool checkValidSelfTest()
+{
+  // target is provided as big-endian bytes, matching mining target generation.
+  uint8_t target_be[32] = {0};
+  target_be[3] = 0x10;
+
+  // hash is compared as little-endian in checkValid.
+  uint8_t hash_eq[32];
+  memcpy(hash_eq, target_be, sizeof(hash_eq));
+  reverse_bytes(hash_eq, sizeof(hash_eq));
+
+  uint8_t hash_lt[32];
+  memcpy(hash_lt, hash_eq, sizeof(hash_lt));
+  decrement_le256(hash_lt);
+
+  uint8_t hash_gt[32];
+  memcpy(hash_gt, hash_eq, sizeof(hash_gt));
+  increment_le256(hash_gt);
+
+  const bool eq_ok = checkValid(hash_eq, target_be);
+  const bool lt_ok = checkValid(hash_lt, target_be);
+  const bool gt_ok = !checkValid(hash_gt, target_be);
+  const bool all_ok = eq_ok && lt_ok && gt_ok;
+
+  Serial.printf("checkValid self-test: %s (eq=%d lt=%d gt=%d)\n",
+                all_ok ? "PASS" : "FAIL",
+                (int)eq_ok, (int)lt_ok, (int)gt_ok);
+
+  return all_ok;
+}
+#endif
 
 /**
  * get random extranonce2
@@ -190,23 +239,36 @@ miner_data calculateMiningData(mining_subscribe& mWorker, mining_job mJob){
 
   miner_data mMiner = init_miner_data();
 
-  // calculate target - target = (nbits[2:]+'00'*(int(nbits[:2],16) - 3)).zfill(64)
-    
-    char target[TARGET_BUFFER_SIZE+1];
-    memset(target, '0', TARGET_BUFFER_SIZE);
-    int zeros = (int) strtol(mJob.nbits.substring(0, 2).c_str(), 0, 16) - 3;
-    memcpy(target + zeros - 2, mJob.nbits.substring(2).c_str(), mJob.nbits.length() - 2);
+  // calculate target from compact bits (nbits), store as big-endian bytes
+    memset(mMiner.bytearray_target, 0, sizeof(mMiner.bytearray_target));
+
+    uint32_t compact = (uint32_t) strtoul(mJob.nbits.c_str(), nullptr, 16);
+    uint32_t exponent = compact >> 24;
+    uint32_t mantissa = compact & 0x007fffff;
+
+    if (exponent > 0 && exponent <= 32) {
+      if (exponent <= 3) {
+        uint32_t value = mantissa >> (8 * (3 - exponent));
+        int offset = 32 - (int)exponent;
+        for (uint32_t i = 0; i < exponent; ++i) {
+          mMiner.bytearray_target[offset + i] = (value >> (8 * (exponent - 1 - i))) & 0xff;
+        }
+      } else {
+        int offset = 32 - (int)exponent;
+        if (offset >= 0 && (offset + 2) < 32) {
+          mMiner.bytearray_target[offset] = (mantissa >> 16) & 0xff;
+          mMiner.bytearray_target[offset + 1] = (mantissa >> 8) & 0xff;
+          mMiner.bytearray_target[offset + 2] = mantissa & 0xff;
+        }
+      }
+    }
+
+    char target[TARGET_BUFFER_SIZE + 1];
+    for (size_t i = 0; i < sizeof(mMiner.bytearray_target); ++i) {
+      snprintf(&target[i * 2], 3, "%02x", mMiner.bytearray_target[i]);
+    }
     target[TARGET_BUFFER_SIZE] = 0;
     Serial.print("    target: "); Serial.println(target);
-    
-    // bytearray target
-    size_t size_target = to_byte_array(target, 32, mMiner.bytearray_target);
-
-    for (size_t j = 0; j < 8; j++) {
-      mMiner.bytearray_target[j] ^= mMiner.bytearray_target[size_target - 1 - j];
-      mMiner.bytearray_target[size_target - 1 - j] ^= mMiner.bytearray_target[j];
-      mMiner.bytearray_target[j] ^= mMiner.bytearray_target[size_target - 1 - j];
-    }
 
     // get extranonce2 - extranonce2 = hex(random.randint(0,2**32-1))[2:].zfill(2*extranonce2_size)
     //To review
@@ -605,4 +667,3 @@ uint32_t crc32_finish(uint32_t crc32)
 {
     return crc32 ^ 0xFFFFFFFF;
 }
-

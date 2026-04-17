@@ -37,7 +37,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
   Serial.printf(">>> Valid blocks: %s\n", data.valids.c_str());
   Serial.printf(">>> Block templates: %s\n", data.templates.c_str());
   Serial.printf(">>> Best difficulty: %s\n", data.bestDiff.c_str());
-  Serial.printf(">>> 32Bit shares: %s\n", data.completedShares.c_str());
+  Serial.printf(">>> Accepted shares: %s\n", data.completedShares.c_str());
   Serial.printf(">>> Temperature: %s\n", data.temp.c_str());
   Serial.printf(">>> Total MHashes: %s\n", data.totalMHashes.c_str());
   Serial.printf(">>> Time mining: %s\n", data.timeMining.c_str());

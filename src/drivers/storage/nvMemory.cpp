@@ -30,6 +30,7 @@ bool nvMemory::saveConfig(TSettings* Settings)
         // Create a JSON document
         StaticJsonDocument<512> json;
         json[JSON_SPIFFS_KEY_POOLURL] = Settings->PoolAddress;
+        json[JSON_SPIFFS_KEY_POOLAPIBASE] = Settings->PoolApiBase;
         json[JSON_SPIFFS_KEY_POOLPORT] = Settings->PoolPort;
         json[JSON_SPIFFS_KEY_POOLPASS] = Settings->PoolPassword;
         json[JSON_SPIFFS_KEY_WALLETID] = Settings->BtcWallet;
@@ -91,6 +92,7 @@ bool nvMemory::loadConfig(TSettings* Settings)
                 if (!error)
                 {
                     Settings->PoolAddress = json[JSON_SPIFFS_KEY_POOLURL] | Settings->PoolAddress;
+                    strcpy(Settings->PoolApiBase, json[JSON_SPIFFS_KEY_POOLAPIBASE] | Settings->PoolApiBase);
                     strcpy(Settings->PoolPassword, json[JSON_SPIFFS_KEY_POOLPASS] | Settings->PoolPassword);
                     strcpy(Settings->BtcWallet, json[JSON_SPIFFS_KEY_WALLETID] | Settings->BtcWallet);
                     if (json.containsKey(JSON_SPIFFS_KEY_POOLPORT))

@@ -105,7 +105,7 @@ void setup()
   #endif
 
   /******** INIT NERDMINER ************/
-  Serial.println("NerdMiner v2 starting......");
+  Serial.println("HashCash_NanoMinerV1 starting......");
 
   /******** INIT DISPLAY ************/
   initDisplay();

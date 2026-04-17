@@ -115,6 +115,7 @@ bool SDCard::loadConfigFile(TSettings* Settings)
                         Settings->WifiPW = json[JSON_KEY_PASW] | Settings->WifiPW;
                     }
                     Settings->PoolAddress = json[JSON_KEY_POOLURL] | Settings->PoolAddress;
+                    strcpy(Settings->PoolApiBase, json[JSON_KEY_POOLAPIBASE] | Settings->PoolApiBase);
                     strcpy(Settings->PoolPassword, json[JSON_KEY_POOLPASS] | Settings->PoolPassword);
                     strcpy(Settings->BtcWallet, json[JSON_KEY_WALLETID] | Settings->BtcWallet);
                     if (json.containsKey(JSON_KEY_POOLPORT))

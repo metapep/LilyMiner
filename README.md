@@ -1,6 +1,6 @@
 # NerdSoloMiner
 
-**The NerdSoloMiner v2**
+**The HashCash_NanoMinerV1**
 
 This is a **free and open source project** that let you try to reach a bitcoin block with a small piece of hardware.
 
@@ -23,7 +23,7 @@ This project was initialy developed using ESP32-S3, but currently support other 
 The microMiner comes with several screens to monitor it's working procedure and also to show you network mining stats.
 Currently includes:
 
-- NerdMiner Screen > Mining data of Nerdminer
+- NanoMiner Screen > Mining data of your miner
 - ClockMiner Screen > Fashion style clock miner
 - GlobalStats Screen > Global minery stats and relevant data
 
@@ -89,7 +89,13 @@ If you want you can compile the entire project using Arduino, PlatformIO or Expr
 
 ### Update firmware
 
-Update NerdMiner firmware following same flashing steps but only using the file 0x10000_firmware.bin.
+Update HashCash_NanoMinerV1 firmware following same flashing steps but only using the file 0x10000_firmware.bin.
+
+#### PlatformIO build (TTGO T-Display S3)
+
+Use the branded environment name:
+
+`pio run -e HashCash_NanoMinerV1`
 
 #### Build troubleshooting
 
@@ -99,21 +105,20 @@ Update NerdMiner firmware following same flashing steps but only using the file 
 1. In extreme case you can "Erase all flash" on ESPtool to clean all current configuration before uploading firmware. There has been cases that experimented Wifi failures until this was made.
 1. In case of ESP32-WROOM Boards, could be necessary to put your board on boot mode. Hold boot button, press reset button and then program.
 
-## NerdMiner configuration
+## HashCash_NanoMinerV1 configuration
 
-After programming, you will only need to setup your Wifi and BTC address.
+After programming, you will only need to setup your Wifi and miner address.
 
-Note: when BTC address of your selected wallet is not provided, mining will not be started.
+Note: when the miner address is not provided, mining will not be started.
 
 #### Wifi Accesspoint
 
 
-1. Connect to NerdMinerAP
-   - AP: NerdMinerAP
-   - PASS: MineYourCoins
+1. Connect to your device AP (defaults are defined in `src/drivers/storage/storage.h`)
 1. Set up your Wifi Network
-1. Add your BTC address
+1. Add your miner address
 1. Change the password if needed
+1. (Optional) set `Pool API base` if your pool API is not auto-detected, for example `http://192.168.1.66:3334/api/client/`
 
    - If you are using public-pool.io and you want to set a custom name to your worker you can append a string with format _.yourworkername_ to the address
 
@@ -128,6 +133,7 @@ Note: when BTC address of your selected wallet is not provided, mining will not 
   "WifiPW": "myWifiPassword",  
   "PoolUrl": "public-pool.io",  
   "PoolPort": 21496,
+  "PoolApiBase": "",
   "PoolPassword": "x",
   "BtcWallet": "walletID",  
   "Timezone": 2,  
