@@ -288,21 +288,33 @@ miner_data calculateMiningData(mining_subscribe& mWorker, mining_job mJob){
     }
     //mWorker.extranonce2 = "00000002";
     
-    //get coinbase - coinbase_hash_bin = hashlib.sha256(hashlib.sha256(binascii.unhexlify(coinbase)).digest()).digest()
-    // Use char buffer instead of String concatenation to avoid memory leaks
-    static char coinbase_buffer[512]; // Static buffer to avoid repeated allocation
-    snprintf(coinbase_buffer, sizeof(coinbase_buffer), "%s%s%s%s", 
-             mJob.coinb1.c_str(), mWorker.extranonce1.c_str(), 
-             mWorker.extranonce2.c_str(), mJob.coinb2.c_str());
-    Serial.print("    coinbase: "); Serial.println(coinbase_buffer);
-    size_t str_len = strlen(coinbase_buffer)/2;
+    // get coinbase - build from full strings to avoid truncation on long signet coinbase scripts
+    String coinbase;
+    coinbase.reserve(
+        mJob.coinb1.length() +
+        mWorker.extranonce1.length() +
+        mWorker.extranonce2.length() +
+        mJob.coinb2.length());
+    coinbase += mJob.coinb1;
+    coinbase += mWorker.extranonce1;
+    coinbase += mWorker.extranonce2;
+    coinbase += mJob.coinb2;
+
+    if ((coinbase.length() % 2) != 0) {
+        Serial.println("    ERROR: coinbase hex length is odd");
+        return mMiner;
+    }
+
+    Serial.print("    coinbase hex length: "); Serial.println(coinbase.length());
+    Serial.print("    coinbase: "); Serial.println(coinbase);
+    size_t str_len = coinbase.length() / 2;
     uint8_t bytearray[str_len];
 
-    size_t res = to_byte_array(coinbase_buffer, str_len*2, bytearray);
+    size_t res = to_byte_array(coinbase.c_str(), coinbase.length(), bytearray);
 
     #ifdef DEBUG_MINING
     Serial.print("    extranonce2: "); Serial.println(mWorker.extranonce2);
-    Serial.print("    coinbase: "); Serial.println(coinbase_buffer);
+    Serial.print("    coinbase: "); Serial.println(coinbase);
     Serial.print("    coinbase bytes - size: "); Serial.println(res);
     for (size_t i = 0; i < res; i++)
         Serial.printf("%02x", bytearray[i]);
@@ -316,7 +328,7 @@ miner_data calculateMiningData(mining_subscribe& mWorker, mining_job mJob){
     byte shaResult[32]; // 256 bit
   
     mbedtls_sha256_starts_ret(&ctx,0);
-    mbedtls_sha256_update_ret(&ctx, bytearray, str_len);
+    mbedtls_sha256_update_ret(&ctx, bytearray, res);
     mbedtls_sha256_finish_ret(&ctx, interResult);
 
     mbedtls_sha256_starts_ret(&ctx,0);
@@ -383,7 +395,7 @@ miner_data calculateMiningData(mining_subscribe& mWorker, mining_job mJob){
       Serial.printf("%02x", mMiner.merkle_result[i]);
       snprintf(&merkle_root[i*2], 3, "%02x", mMiner.merkle_result[i]);
     }
-    merkle_root[65] = 0;
+    merkle_root[64] = 0;
     Serial.println("");
 
     // calculate blockheader
