@@ -131,10 +131,110 @@ bool tx_mining_auth(WiFiClient& client, const char * user, const char * pass)
 
     vTaskDelay(200 / portTICK_PERIOD_MS); //Small delay
 
-    //Don't parse here any answer
-    //Miner started to receive mining notifications so better parse all at main thread
+    String line = client.readStringUntil('\n');
+    if(!verifyPayload(&line)) return false;
+    Serial.print("  Receiving: "); Serial.println(line);
+
+    DeserializationError error = deserializeJson(doc, line);
+    if (error || checkError(doc)) return false;
+    if (!doc.containsKey("id") || !doc["id"].is<unsigned long>() || doc["id"].as<unsigned long>() != id) return false;
+    if (!doc.containsKey("result") || !doc["result"].is<bool>()) return false;
+
+    return doc["result"].as<bool>();
+}
+
+bool tx_mining_device_challenge(WiFiClient& client, const char * device_id, const char * wallet, device_challenge& challenge)
+{
+    char payload[BUFFER] = {0};
+    id = getNextId(id);
+    snprintf(
+        payload,
+        sizeof(payload),
+        "{\"id\": %u, \"method\": \"mining.device_challenge\", \"params\": [\"%s\", \"%s\"]}\n",
+        id,
+        device_id,
+        wallet
+    );
+
+    Serial.printf("[WORKER] ==> Device challenge\n");
+    Serial.print("  Sending  : "); Serial.println(payload);
+    client.print(payload);
+
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    String line = client.readStringUntil('\n');
+    if (!verifyPayload(&line)) {
+        return false;
+    }
+    Serial.print("  Receiving: "); Serial.println(line);
+
+    DeserializationError error = deserializeJson(doc, line);
+    if (error || checkError(doc)) {
+        return false;
+    }
+    if (!doc.containsKey("id") || !doc["id"].is<unsigned long>() || doc["id"].as<unsigned long>() != id) {
+        return false;
+    }
+    if (!doc.containsKey("result")) {
+        return false;
+    }
+
+    JsonObject result = doc["result"].as<JsonObject>();
+    if (result.isNull()) {
+        return false;
+    }
+    if (!result.containsKey("challenge_id") || !result.containsKey("nonce") || !result.containsKey("expires_at")) {
+        return false;
+    }
+
+    challenge.challenge_id = String((const char*)result["challenge_id"]);
+    challenge.nonce = String((const char*)result["nonce"]);
+    challenge.expires_at = result["expires_at"].as<uint64_t>();
+
+    if (challenge.challenge_id.length() == 0 || challenge.nonce.length() == 0 || challenge.expires_at == 0) {
+        return false;
+    }
 
     return true;
+}
+
+bool tx_mining_device_auth(WiFiClient& client, const char * device_id, const char * wallet, const char * challenge_id, const char * proof)
+{
+    char payload[BUFFER] = {0};
+    id = getNextId(id);
+    snprintf(
+        payload,
+        sizeof(payload),
+        "{\"id\": %u, \"method\": \"mining.device_auth\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\"]}\n",
+        id,
+        device_id,
+        wallet,
+        challenge_id,
+        proof
+    );
+
+    Serial.printf("[WORKER] ==> Device auth\n");
+    Serial.print("  Sending  : "); Serial.println(payload);
+    client.print(payload);
+
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    String line = client.readStringUntil('\n');
+    if (!verifyPayload(&line)) {
+        return false;
+    }
+    Serial.print("  Receiving: "); Serial.println(line);
+
+    DeserializationError error = deserializeJson(doc, line);
+    if (error || checkError(doc)) {
+        return false;
+    }
+    if (!doc.containsKey("id") || !doc["id"].is<unsigned long>() || doc["id"].as<unsigned long>() != id) {
+        return false;
+    }
+    if (!doc.containsKey("result") || !doc["result"].is<bool>()) {
+        return false;
+    }
+
+    return doc["result"].as<bool>();
 }
 
 

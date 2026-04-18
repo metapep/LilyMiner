@@ -37,6 +37,12 @@ typedef struct {
     bool clean_jobs;
 } mining_job;
 
+typedef struct {
+    String challenge_id;
+    String nonce;
+    uint64_t expires_at;
+} device_challenge;
+
 typedef enum {
     STRATUM_SUCCESS,
     STRATUM_UNKNOWN,
@@ -58,6 +64,8 @@ bool parse_mining_subscribe(String line, mining_subscribe& mSubscribe);
 bool tx_mining_auth(WiFiClient& client, const char * user, const char * pass);
 stratum_method parse_mining_method(String line);
 bool parse_mining_notify(String line, mining_job& mJob);
+bool tx_mining_device_challenge(WiFiClient& client, const char * device_id, const char * wallet, device_challenge& challenge);
+bool tx_mining_device_auth(WiFiClient& client, const char * device_id, const char * wallet, const char * challenge_id, const char * proof);
 
 //Method Mining.submit
 bool tx_mining_submit(WiFiClient& client, mining_subscribe mWorker, mining_job mJob, unsigned long nonce, unsigned long &submit_id);

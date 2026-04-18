@@ -16,8 +16,17 @@
 #include <mutex>
 #include <list>
 #include <map>
+#include <ctype.h>
 #include "mbedtls/sha256.h"
 #include "i2c_master.h"
+#include "esp_mac.h"
+
+#if defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32H2)
+#define HCASH_DEVICE_AUTH_SUPPORTED 1
+#include "esp_hmac.h"
+#else
+#define HCASH_DEVICE_AUTH_SUPPORTED 0
+#endif
 
 //10 Jobs per second
 #define NONCE_PER_JOB_SW 4096
@@ -71,9 +80,134 @@ monitor_data mMonitor;
 static bool volatile isMinerSuscribed = false;
 unsigned long mLastTXtoPool = millis();
 
+#if HCASH_DEVICE_AUTH_SUPPORTED
+#ifndef DEVICE_HMAC_KEY_SLOT
+#define DEVICE_HMAC_KEY_SLOT 0
+#endif
+#endif
+
 int saveIntervals[7] = {5 * 60, 15 * 60, 30 * 60, 1 * 3600, 3 * 3600, 6 * 3600, 12 * 3600};
 int saveIntervalsSize = sizeof(saveIntervals)/sizeof(saveIntervals[0]);
 int currentIntervalIndex = 0;
+
+static void normalizeWalletLowercase(const char* input, char* output, size_t outSize)
+{
+  if (output == nullptr || outSize == 0) {
+    return;
+  }
+  output[0] = '\0';
+  if (input == nullptr) {
+    return;
+  }
+  size_t i = 0;
+  while (input[i] != '\0' && i + 1 < outSize) {
+    output[i] = (char)tolower((unsigned char)input[i]);
+    ++i;
+  }
+  output[i] = '\0';
+}
+
+static bool getDeviceIdFromEfuse(char* output, size_t outSize)
+{
+  if (output == nullptr || outSize < 13) {
+    return false;
+  }
+  uint8_t mac[6] = {0};
+  if (esp_efuse_mac_get_default(mac) != ESP_OK) {
+    return false;
+  }
+  snprintf(
+      output,
+      outSize,
+      "%02x%02x%02x%02x%02x%02x",
+      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+  );
+  return true;
+}
+
+static bool bytesToLowerHex(const uint8_t* bytes, size_t byteCount, char* outHex, size_t outHexSize)
+{
+  if (bytes == nullptr || outHex == nullptr || outHexSize < ((byteCount * 2) + 1)) {
+    return false;
+  }
+  static const char* kHex = "0123456789abcdef";
+  for (size_t i = 0; i < byteCount; ++i) {
+    outHex[(i * 2)] = kHex[(bytes[i] >> 4) & 0x0F];
+    outHex[(i * 2) + 1] = kHex[bytes[i] & 0x0F];
+  }
+  outHex[byteCount * 2] = '\0';
+  return true;
+}
+
+static bool buildDeviceProof(const char* wallet, const device_challenge& challenge, char* proofOut, size_t proofOutSize)
+{
+  if (wallet == nullptr || proofOut == nullptr || proofOutSize < 65) {
+    return false;
+  }
+
+#if HCASH_DEVICE_AUTH_SUPPORTED
+  char normalizedWallet[80] = {0};
+  normalizeWalletLowercase(wallet, normalizedWallet, sizeof(normalizedWallet));
+
+  String payload = String(challenge.challenge_id);
+  payload += ":";
+  payload += challenge.nonce;
+  payload += ":";
+  char expiresAtBuffer[24] = {0};
+  snprintf(expiresAtBuffer, sizeof(expiresAtBuffer), "%llu", (unsigned long long)challenge.expires_at);
+  payload += expiresAtBuffer;
+  payload += ":";
+  payload += normalizedWallet;
+
+  uint8_t hmacDigest[32] = {0};
+  const hmac_key_id_t keyId = (hmac_key_id_t)DEVICE_HMAC_KEY_SLOT;
+  esp_err_t err = esp_hmac_calculate(keyId, payload.c_str(), payload.length(), hmacDigest);
+  if (err != ESP_OK) {
+    Serial.printf("Device proof generation failed, esp_hmac_calculate err=%d\n", (int)err);
+    return false;
+  }
+  return bytesToLowerHex(hmacDigest, sizeof(hmacDigest), proofOut, proofOutSize);
+#else
+  Serial.println("Device proof generation is unsupported on this target");
+  return false;
+#endif
+}
+
+static bool authenticateDeviceWithPool(WiFiClient& poolClient, const char* wallet)
+{
+  if (wallet == nullptr || wallet[0] == '\0') {
+    Serial.println("Wallet is empty; cannot run device authentication");
+    return false;
+  }
+
+  char deviceId[16] = {0};
+  if (!getDeviceIdFromEfuse(deviceId, sizeof(deviceId))) {
+    Serial.println("Failed to read eFuse base MAC for device_id");
+    return false;
+  }
+
+  device_challenge challenge;
+  challenge.challenge_id = "";
+  challenge.nonce = "";
+  challenge.expires_at = 0;
+  if (!tx_mining_device_challenge(poolClient, deviceId, wallet, challenge)) {
+    Serial.println("Pool device challenge request failed");
+    return false;
+  }
+
+  char proofHex[65] = {0};
+  if (!buildDeviceProof(wallet, challenge, proofHex, sizeof(proofHex))) {
+    Serial.println("Device proof build failed");
+    return false;
+  }
+
+  if (!tx_mining_device_auth(poolClient, deviceId, wallet, challenge.challenge_id.c_str(), proofHex)) {
+    Serial.println("Pool device auth request failed");
+    return false;
+  }
+
+  return true;
+}
 
 bool checkPoolConnection(void) {
   
@@ -290,8 +424,17 @@ void runStratumWorker(void *name) {
       strcpy(mWorker.wName, Settings.BtcWallet);
       strcpy(mWorker.wPass, Settings.PoolPassword);
       // STEP 2: Pool authorize work (Block Info)
-      tx_mining_auth(client, mWorker.wName, mWorker.wPass); //Don't verifies authoritzation, TODO
-      //tx_mining_auth2(client, mWorker.wName, mWorker.wPass); //Don't verifies authoritzation, TODO
+      if (!tx_mining_auth(client, mWorker.wName, mWorker.wPass)) {
+        client.stop();
+        MiningJobStop(job_pool, s_submition_map);
+        continue;
+      }
+      // STEP 2.1: Device challenge-response auth before mining activation
+      if (!authenticateDeviceWithPool(client, mWorker.wName)) {
+        client.stop();
+        MiningJobStop(job_pool, s_submition_map);
+        continue;
+      }
 
       // STEP 3: Suggest pool difficulty
       tx_suggest_difficulty(client, currentPoolDifficulty);
