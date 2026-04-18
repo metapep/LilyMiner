@@ -44,6 +44,55 @@ bool checkError(const StaticJsonDocument<BUFFER_JSON_DOC> doc) {
   return true;  
 }
 
+static bool readJsonRpcResponseForId(
+    WiFiClient& client,
+    unsigned long expectedId,
+    String& matchedLine,
+    uint32_t timeoutMs = 5000)
+{
+    const uint32_t startedAt = millis();
+    while ((uint32_t)(millis() - startedAt) < timeoutMs) {
+        if (!client.connected()) {
+            return false;
+        }
+
+        String line = client.readStringUntil('\n');
+        if (!verifyPayload(&line)) {
+            vTaskDelay(20 / portTICK_PERIOD_MS);
+            continue;
+        }
+
+        Serial.print("  Receiving: "); Serial.println(line);
+
+        DeserializationError parseError = deserializeJson(doc, line);
+        if (parseError) {
+            continue;
+        }
+
+        if (doc.containsKey("id") &&
+            doc["id"].is<unsigned long>() &&
+            doc["id"].as<unsigned long>() == expectedId) {
+            matchedLine = line;
+            return true;
+        }
+
+        if (doc.containsKey("method") && doc["method"].is<const char*>()) {
+            const char* method = doc["method"];
+            if (strcmp(method, "mining.set_difficulty") == 0) {
+                Serial.printf(
+                    "    Deferred async set_difficulty while waiting for response id %u\n",
+                    expectedId);
+            } else if (strcmp(method, "mining.notify") == 0) {
+                Serial.printf(
+                    "    Deferred async mining.notify while waiting for response id %u\n",
+                    expectedId);
+            }
+        }
+    }
+
+    return false;
+}
+
 
 // STEP 1: Pool server connection (SUBSCRIBE)
     // Docs: 
@@ -131,9 +180,8 @@ bool tx_mining_auth(WiFiClient& client, const char * user, const char * pass)
 
     vTaskDelay(200 / portTICK_PERIOD_MS); //Small delay
 
-    String line = client.readStringUntil('\n');
-    if(!verifyPayload(&line)) return false;
-    Serial.print("  Receiving: "); Serial.println(line);
+    String line;
+    if (!readJsonRpcResponseForId(client, id, line)) return false;
 
     DeserializationError error = deserializeJson(doc, line);
     if (error || checkError(doc)) return false;
@@ -161,11 +209,10 @@ bool tx_mining_device_challenge(WiFiClient& client, const char * device_id, cons
     client.print(payload);
 
     vTaskDelay(200 / portTICK_PERIOD_MS);
-    String line = client.readStringUntil('\n');
-    if (!verifyPayload(&line)) {
+    String line;
+    if (!readJsonRpcResponseForId(client, id, line)) {
         return false;
     }
-    Serial.print("  Receiving: "); Serial.println(line);
 
     DeserializationError error = deserializeJson(doc, line);
     if (error || checkError(doc)) {
@@ -217,11 +264,10 @@ bool tx_mining_device_auth(WiFiClient& client, const char * device_id, const cha
     client.print(payload);
 
     vTaskDelay(200 / portTICK_PERIOD_MS);
-    String line = client.readStringUntil('\n');
-    if (!verifyPayload(&line)) {
+    String line;
+    if (!readJsonRpcResponseForId(client, id, line)) {
         return false;
     }
-    Serial.print("  Receiving: "); Serial.println(line);
 
     DeserializationError error = deserializeJson(doc, line);
     if (error || checkError(doc)) {
