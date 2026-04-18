@@ -34,7 +34,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
                 data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
 
   // Print extended data to serial for no display devices
-  Serial.printf(">>> Valid blocks: %s\n", data.valids.c_str());
+  Serial.printf(">>> Hi-diff shares: %s\n", data.valids.c_str());
   Serial.printf(">>> Block templates: %s\n", data.templates.c_str());
   Serial.printf(">>> Best difficulty: %s\n", data.bestDiff.c_str());
   Serial.printf(">>> Accepted shares: %s\n", data.completedShares.c_str());

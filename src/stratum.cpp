@@ -39,7 +39,13 @@ bool checkError(const StaticJsonDocument<BUFFER_JSON_DOC> doc) {
   
   if (doc["error"].size() == 0) return false;
 
-  Serial.printf("ERROR: %d | reason: %s \n", (const int) doc["error"][0], (const char*) doc["error"][1]);
+  const int errCode = (const int) doc["error"][0];
+  const char* errReason = (const char*) doc["error"][1];
+  if (errCode == 21) {
+    Serial.printf("ERROR: %d | reason: %s (stale share/job rotated)\n", errCode, errReason);
+  } else {
+    Serial.printf("ERROR: %d | reason: %s \n", errCode, errReason);
+  }
 
   return true;  
 }

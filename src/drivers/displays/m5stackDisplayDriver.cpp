@@ -74,7 +74,7 @@ void m5stackDisplay_NoScreen(unsigned long mElapsed)
   M5.Lcd.print("Block templ.  : "); M5.Lcd.setTextColor(YELLOW); M5.Lcd.println(data.templates); M5.Lcd.setTextColor(WHITE);
   M5.Lcd.print("Best dificulty: "); M5.Lcd.setTextColor(YELLOW); M5.Lcd.println(data.bestDiff); M5.Lcd.setTextColor(WHITE);
   M5.Lcd.print("Accepted shrs : "); M5.Lcd.setTextColor(YELLOW); M5.Lcd.println(data.completedShares); M5.Lcd.setTextColor(WHITE);
-  M5.Lcd.print("Valid blocks  : "); M5.Lcd.setTextColor(RED); M5.Lcd.println(data.valids); M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print("Hi-diff shares: "); M5.Lcd.setTextColor(RED); M5.Lcd.println(data.valids); M5.Lcd.setTextColor(WHITE);
   M5.Lcd.println("");
   M5.Lcd.drawLine(0,200,320,200,GREENYELLOW);
   M5.Lcd.print("Pool: "); M5.Lcd.setTextColor(GREENYELLOW); M5.Lcd.print(Settings.PoolAddress); M5.Lcd.print(":"); M5.Lcd.println(Settings.PoolPort); M5.Lcd.setTextColor(WHITE);

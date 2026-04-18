@@ -24,6 +24,7 @@
 #if defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32H2)
 #define HCASH_DEVICE_AUTH_SUPPORTED 1
 #include "esp_hmac.h"
+#include "esp_efuse.h"
 #else
 #define HCASH_DEVICE_AUTH_SUPPORTED 0
 #endif
@@ -59,7 +60,7 @@ uint32_t elapsedKHs = 0;
 uint64_t upTime = 0;
 
 volatile uint32_t shares; // increase if blockhash has 32 bits of zeroes
-volatile uint32_t valids; // increased if blockhash <= target
+volatile uint32_t valids; // accepted shares that also met network target before pool-side signet signing
 volatile uint32_t acceptedShares; // accepted by pool (Stratum success)
 
 // Track best diff
@@ -82,7 +83,7 @@ unsigned long mLastTXtoPool = millis();
 
 #if HCASH_DEVICE_AUTH_SUPPORTED
 #ifndef DEVICE_HMAC_KEY_SLOT
-#define DEVICE_HMAC_KEY_SLOT 0
+#define DEVICE_HMAC_KEY_SLOT -1
 #endif
 #endif
 
@@ -139,6 +140,49 @@ static bool bytesToLowerHex(const uint8_t* bytes, size_t byteCount, char* outHex
   return true;
 }
 
+#if HCASH_DEVICE_AUTH_SUPPORTED
+static bool resolveDeviceHmacKeyId(hmac_key_id_t* keyIdOut)
+{
+  if (keyIdOut == nullptr) {
+    return false;
+  }
+
+#if DEVICE_HMAC_KEY_SLOT >= 0
+  const int configuredSlot = (int)DEVICE_HMAC_KEY_SLOT;
+  if (configuredSlot < 0 || configuredSlot >= (int)HMAC_KEY_MAX) {
+    Serial.printf("Configured DEVICE_HMAC_KEY_SLOT is out of range: %d\n", configuredSlot);
+    return false;
+  }
+  esp_efuse_block_t configuredBlock = (esp_efuse_block_t)((int)EFUSE_BLK_KEY0 + configuredSlot);
+  esp_efuse_purpose_t configuredPurpose = esp_efuse_get_key_purpose(configuredBlock);
+  if (configuredPurpose != ESP_EFUSE_KEY_PURPOSE_HMAC_UP) {
+    Serial.printf(
+        "Configured DEVICE_HMAC_KEY_SLOT=%d has wrong purpose=%d (expected HMAC_UP=%d)\n",
+        configuredSlot, (int)configuredPurpose, (int)ESP_EFUSE_KEY_PURPOSE_HMAC_UP
+    );
+    return false;
+  }
+  *keyIdOut = (hmac_key_id_t)configuredSlot;
+  return true;
+#endif
+
+  esp_efuse_block_t keyBlock = EFUSE_BLK_KEY_MAX;
+  if (!esp_efuse_find_purpose(ESP_EFUSE_KEY_PURPOSE_HMAC_UP, &keyBlock)) {
+    Serial.println("Device HMAC key not provisioned: no eFuse key block with HMAC_UP purpose");
+    return false;
+  }
+
+  const int keySlot = (int)keyBlock - (int)EFUSE_BLK_KEY0;
+  if (keySlot < 0 || keySlot >= (int)HMAC_KEY_MAX) {
+    Serial.printf("Device HMAC key purpose found in invalid eFuse block: %d\n", (int)keyBlock);
+    return false;
+  }
+
+  *keyIdOut = (hmac_key_id_t)keySlot;
+  return true;
+}
+#endif
+
 static bool buildDeviceProof(const char* wallet, const device_challenge& challenge, char* proofOut, size_t proofOutSize)
 {
   if (wallet == nullptr || proofOut == nullptr || proofOutSize < 65) {
@@ -159,11 +203,19 @@ static bool buildDeviceProof(const char* wallet, const device_challenge& challen
   payload += ":";
   payload += normalizedWallet;
 
+  hmac_key_id_t keyId = HMAC_KEY0;
+  if (!resolveDeviceHmacKeyId(&keyId)) {
+    Serial.println("Device proof generation failed: HMAC_UP eFuse key missing or invalid");
+    return false;
+  }
+
   uint8_t hmacDigest[32] = {0};
-  const hmac_key_id_t keyId = (hmac_key_id_t)DEVICE_HMAC_KEY_SLOT;
   esp_err_t err = esp_hmac_calculate(keyId, payload.c_str(), payload.length(), hmacDigest);
   if (err != ESP_OK) {
-    Serial.printf("Device proof generation failed, esp_hmac_calculate err=%d\n", (int)err);
+    Serial.printf(
+        "Device proof generation failed, esp_hmac_calculate err=%d (%s), key_slot=%d\n",
+        (int)err, esp_err_to_name(err), (int)keyId
+    );
     return false;
   }
   return bytesToLowerHex(hmacDigest, sizeof(hmacDigest), proofOut, proofOutSize);
@@ -594,7 +646,7 @@ void runStratumWorker(void *name) {
                                             shares++;
                                           if (itt->second->isValid)
                                           {
-                                            Serial.println("CONGRATULATIONS! Valid block found");
+                                            Serial.println("Share accepted: met network target pre-signet (pool will decide final block acceptance)");
                                             valids++;
                                           }
                                           s_submition_map.erase(itt);
@@ -606,7 +658,7 @@ void runStratumWorker(void *name) {
                                         auto itt = s_submition_map.find(id);
                                         if (itt != s_submition_map.end())
                                         {
-                                          Serial.printf("Refuse submition %d\n", id);
+                                          Serial.printf("Share rejected by pool for submit id %lu\n", id);
                                           s_submition_map.erase(itt);
                                         }
                                       }
