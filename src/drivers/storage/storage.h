@@ -18,7 +18,7 @@
 #define DEFAULT_POOLURL		"stratum+tcp://stratum.hcash-dev.network:3333"
 #define DEFAULT_POOL_API_BASE	""
 #define DEFAULT_POOLPASS	"x"
-#define DEFAULT_WALLETID	"hcash1q92kpag0scy3r2xskfq8xvhj6ewvr5hkuz34x2s"
+#define DEFAULT_WALLETID	"hcash1qch57r3rsh2wcy0dr8t0s8ehvm33e20cjyhpy3h"
 #define DEFAULT_POOLPORT	3333
 #define DEFAULT_TIMEZONE	2
 #define DEFAULT_SAVESTATS	false
