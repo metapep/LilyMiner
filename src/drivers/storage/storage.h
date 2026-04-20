@@ -19,6 +19,8 @@
 #define DEFAULT_POOL_API_BASE	""
 #define DEFAULT_POOLPASS	"x"
 #define DEFAULT_WALLETID	"hcash1qch57r3rsh2wcy0dr8t0s8ehvm33e20cjyhpy3h"
+#define DEFAULT_OWNER_WALLET_EVM	""
+#define DEFAULT_ACTIVATION_STATE	"unclaimed"
 #define DEFAULT_POOLPORT	3333
 #define DEFAULT_TIMEZONE	2
 #define DEFAULT_SAVESTATS	false
@@ -35,6 +37,12 @@
 #define JSON_KEY_POOLAPIBASE	"PoolApiBase"
 #define JSON_KEY_POOLPASS	"PoolPassword"
 #define JSON_KEY_WALLETID	"BtcWallet"
+#define JSON_KEY_PAYOUT_WALLET_HCASH	"PayoutWalletHcash"
+#define JSON_KEY_OWNER_WALLET_EVM	"OwnerWalletEvm"
+#define JSON_KEY_ACTIVATION_STATE	"ActivationState"
+#define JSON_KEY_ACTIVATION_CODE	"ActivationCode"
+#define JSON_KEY_ACTIVATION_CODE_EXPIRES_AT	"ActivationCodeExpiresAt"
+#define JSON_KEY_ACTIVATION_LAST_CHECK_AT	"ActivationLastCheckAt"
 #define JSON_KEY_POOLPORT	"PoolPort"
 #define JSON_KEY_TIMEZONE	"Timezone"
 #define JSON_KEY_STATS2NV	"SaveStats"
@@ -47,6 +55,12 @@
 #define JSON_SPIFFS_KEY_POOLPORT	"portNumber"
 #define JSON_SPIFFS_KEY_POOLPASS	"poolPassword"
 #define JSON_SPIFFS_KEY_WALLETID	"btcString"
+#define JSON_SPIFFS_KEY_PAYOUT_WALLET_HCASH	"payoutWalletHcash"
+#define JSON_SPIFFS_KEY_OWNER_WALLET_EVM	"ownerWalletEvm"
+#define JSON_SPIFFS_KEY_ACTIVATION_STATE	"activationState"
+#define JSON_SPIFFS_KEY_ACTIVATION_CODE	"activationCode"
+#define JSON_SPIFFS_KEY_ACTIVATION_CODE_EXPIRES_AT	"activationCodeExpiresAt"
+#define JSON_SPIFFS_KEY_ACTIVATION_LAST_CHECK_AT	"activationLastCheckAt"
 #define JSON_SPIFFS_KEY_TIMEZONE	"gmtZone"
 #define JSON_SPIFFS_KEY_STATS2NV	"saveStatsToNVS"
 #define JSON_SPIFFS_KEY_INVCOLOR	"invertColors"
@@ -59,7 +73,13 @@ struct TSettings
 	String WifiPW{ DEFAULT_WIFI_WIFIPW };
 	String PoolAddress{ DEFAULT_POOLURL };
 	char PoolApiBase[120]{ DEFAULT_POOL_API_BASE };
-	char BtcWallet[80]{ DEFAULT_WALLETID };
+	char BtcWallet[80]{ DEFAULT_WALLETID }; // legacy mirror of payout wallet
+	char PayoutWalletHcash[80]{ DEFAULT_WALLETID };
+	char OwnerWalletEvm[64]{ DEFAULT_OWNER_WALLET_EVM };
+	char ActivationState[24]{ DEFAULT_ACTIVATION_STATE };
+	char ActivationCode[16]{ "" };
+	uint64_t ActivationCodeExpiresAt{ 0 };
+	uint64_t ActivationLastCheckAt{ 0 };
 	char PoolPassword[80]{ DEFAULT_POOLPASS };
 	int PoolPort{ DEFAULT_POOLPORT };
 	int Timezone{ DEFAULT_TIMEZONE };

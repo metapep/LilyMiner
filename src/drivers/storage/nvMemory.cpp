@@ -27,13 +27,23 @@ bool nvMemory::saveConfig(TSettings* Settings)
         // Save Config in JSON format
         Serial.println(F("SPIFS: Saving configuration."));
 
+        // Keep legacy and new payout wallet fields in sync.
+        strncpy(Settings->BtcWallet, Settings->PayoutWalletHcash, sizeof(Settings->BtcWallet));
+        Settings->BtcWallet[sizeof(Settings->BtcWallet) - 1] = '\0';
+
         // Create a JSON document
-        StaticJsonDocument<512> json;
+        StaticJsonDocument<1024> json;
         json[JSON_SPIFFS_KEY_POOLURL] = Settings->PoolAddress;
         json[JSON_SPIFFS_KEY_POOLAPIBASE] = Settings->PoolApiBase;
         json[JSON_SPIFFS_KEY_POOLPORT] = Settings->PoolPort;
         json[JSON_SPIFFS_KEY_POOLPASS] = Settings->PoolPassword;
         json[JSON_SPIFFS_KEY_WALLETID] = Settings->BtcWallet;
+        json[JSON_SPIFFS_KEY_PAYOUT_WALLET_HCASH] = Settings->PayoutWalletHcash;
+        json[JSON_SPIFFS_KEY_OWNER_WALLET_EVM] = Settings->OwnerWalletEvm;
+        json[JSON_SPIFFS_KEY_ACTIVATION_STATE] = Settings->ActivationState;
+        json[JSON_SPIFFS_KEY_ACTIVATION_CODE] = Settings->ActivationCode;
+        json[JSON_SPIFFS_KEY_ACTIVATION_CODE_EXPIRES_AT] = Settings->ActivationCodeExpiresAt;
+        json[JSON_SPIFFS_KEY_ACTIVATION_LAST_CHECK_AT] = Settings->ActivationLastCheckAt;
         json[JSON_SPIFFS_KEY_TIMEZONE] = Settings->Timezone;
         json[JSON_SPIFFS_KEY_STATS2NV] = Settings->saveStats;
         json[JSON_SPIFFS_KEY_INVCOLOR] = Settings->invertColors;
@@ -84,7 +94,7 @@ bool nvMemory::loadConfig(TSettings* Settings)
             if (configFile)
             {
                 Serial.println("SPIFS: Loading config file");
-                StaticJsonDocument<512> json;
+                StaticJsonDocument<1024> json;
                 DeserializationError error = deserializeJson(json, configFile);
                 configFile.close();
                 serializeJsonPretty(json, Serial);
@@ -95,6 +105,21 @@ bool nvMemory::loadConfig(TSettings* Settings)
                     strcpy(Settings->PoolApiBase, json[JSON_SPIFFS_KEY_POOLAPIBASE] | Settings->PoolApiBase);
                     strcpy(Settings->PoolPassword, json[JSON_SPIFFS_KEY_POOLPASS] | Settings->PoolPassword);
                     strcpy(Settings->BtcWallet, json[JSON_SPIFFS_KEY_WALLETID] | Settings->BtcWallet);
+                    strcpy(Settings->PayoutWalletHcash, json[JSON_SPIFFS_KEY_PAYOUT_WALLET_HCASH] | Settings->PayoutWalletHcash);
+                    if (strlen(Settings->PayoutWalletHcash) == 0)
+                    {
+                        strncpy(Settings->PayoutWalletHcash, Settings->BtcWallet, sizeof(Settings->PayoutWalletHcash));
+                        Settings->PayoutWalletHcash[sizeof(Settings->PayoutWalletHcash) - 1] = '\0';
+                    }
+                    strncpy(Settings->BtcWallet, Settings->PayoutWalletHcash, sizeof(Settings->BtcWallet));
+                    Settings->BtcWallet[sizeof(Settings->BtcWallet) - 1] = '\0';
+
+                    strcpy(Settings->OwnerWalletEvm, json[JSON_SPIFFS_KEY_OWNER_WALLET_EVM] | Settings->OwnerWalletEvm);
+                    strcpy(Settings->ActivationState, json[JSON_SPIFFS_KEY_ACTIVATION_STATE] | Settings->ActivationState);
+                    strcpy(Settings->ActivationCode, json[JSON_SPIFFS_KEY_ACTIVATION_CODE] | Settings->ActivationCode);
+                    Settings->ActivationCodeExpiresAt = json[JSON_SPIFFS_KEY_ACTIVATION_CODE_EXPIRES_AT] | Settings->ActivationCodeExpiresAt;
+                    Settings->ActivationLastCheckAt = json[JSON_SPIFFS_KEY_ACTIVATION_LAST_CHECK_AT] | Settings->ActivationLastCheckAt;
+
                     if (json.containsKey(JSON_SPIFFS_KEY_POOLPORT))
                         Settings->PoolPort = json[JSON_SPIFFS_KEY_POOLPORT].as<int>();
                     if (json.containsKey(JSON_SPIFFS_KEY_TIMEZONE))

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <esp_task_wdt.h>
 #include <nvs_flash.h>
 #include <nvs.h>
@@ -13,10 +14,12 @@
 #include "timeconst.h"
 #include "drivers/displays/display.h"
 #include "drivers/storage/storage.h"
+#include "drivers/storage/nvMemory.h"
 #include <mutex>
 #include <list>
 #include <map>
 #include <ctype.h>
+#include <time.h>
 #include "mbedtls/sha256.h"
 #include "i2c_master.h"
 #include "esp_mac.h"
@@ -69,6 +72,7 @@ double best_diff = 0.0;
 // Variables to hold data from custom textboxes
 //Track mining stats in non volatile memory
 extern TSettings Settings;
+extern nvMemory nvMem;
 
 IPAddress serverIP(1, 1, 1, 1); //Temporally save poolIPaddres
 
@@ -223,6 +227,239 @@ static bool buildDeviceProof(const char* wallet, const device_challenge& challen
   Serial.println("Device proof generation is unsupported on this target");
   return false;
 #endif
+}
+
+
+static bool isActivationStateReady()
+{
+  String state = String(Settings.ActivationState);
+  state.trim();
+  state.toLowerCase();
+  return state == "claimed" || state == "bypass_auto";
+}
+
+static void setActivationState(const char* state)
+{
+  if (state == nullptr) {
+    return;
+  }
+  strncpy(Settings.ActivationState, state, sizeof(Settings.ActivationState));
+  Settings.ActivationState[sizeof(Settings.ActivationState) - 1] = '\0';
+}
+
+static bool setActivationCode(const char* code, uint64_t expiresAt)
+{
+  if (code == nullptr) {
+    return false;
+  }
+  if (strncmp(Settings.ActivationCode, code, sizeof(Settings.ActivationCode)) == 0 &&
+      Settings.ActivationCodeExpiresAt == expiresAt) {
+    return false;
+  }
+  strncpy(Settings.ActivationCode, code, sizeof(Settings.ActivationCode));
+  Settings.ActivationCode[sizeof(Settings.ActivationCode) - 1] = '\0';
+  Settings.ActivationCodeExpiresAt = expiresAt;
+  return true;
+}
+
+static String normalizeActivationApiBase()
+{
+  String base = String(Settings.PoolApiBase);
+  base.trim();
+  if (base.length() == 0)
+  {
+    base = "http://" + Settings.PoolAddress + ":3334";
+  }
+
+  int apiClientIdx = base.indexOf("/api/client/");
+  if (apiClientIdx > 0)
+  {
+    base = base.substring(0, apiClientIdx);
+  }
+  else
+  {
+    apiClientIdx = base.indexOf("/api/client");
+    if (apiClientIdx > 0)
+    {
+      base = base.substring(0, apiClientIdx);
+    }
+  }
+
+  while (base.endsWith("/")) {
+    base.remove(base.length() - 1);
+  }
+
+  if (!base.endsWith("/api/activation")) {
+    base += "/api/activation";
+  }
+
+  return base;
+}
+
+static bool readActivationStatus(const JsonVariantConst& root, const char* fallbackState)
+{
+  const char* status = root["status"] | fallbackState;
+  if (status == nullptr) {
+    return false;
+  }
+
+  String state = String(status);
+  state.toLowerCase();
+  if (state == "claimed" || state == "bypass_auto") {
+    setActivationState(status);
+    return true;
+  }
+
+  setActivationState("unclaimed");
+  return false;
+}
+
+static bool fetchActivationCodeFromServer(const char* deviceId, const char* payoutWallet)
+{
+  HTTPClient http;
+  String endpoint = normalizeActivationApiBase() + "/code";
+  http.setTimeout(10000);
+
+  StaticJsonDocument<320> requestDoc;
+  requestDoc["deviceId"] = deviceId;
+  requestDoc["payoutWalletHcash"] = payoutWallet;
+
+  String body;
+  serializeJson(requestDoc, body);
+
+  if (!http.begin(endpoint)) {
+    Serial.println("Activation code request: failed to begin HTTP");
+    return false;
+  }
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.POST(body);
+  if (httpCode != HTTP_CODE_OK)
+  {
+    Serial.printf("Activation code request failed: HTTP %d\n", httpCode);
+    http.end();
+    return false;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  StaticJsonDocument<1024> responseDoc;
+  DeserializationError error = deserializeJson(responseDoc, payload);
+  if (error)
+  {
+    Serial.println("Activation code response JSON parse failed");
+    return false;
+  }
+
+  if (readActivationStatus(responseDoc.as<JsonVariantConst>(), "unclaimed"))
+  {
+    strncpy(Settings.ActivationCode, "", sizeof(Settings.ActivationCode));
+    Settings.ActivationCodeExpiresAt = 0;
+    Settings.ActivationLastCheckAt = millis();
+    nvMem.saveConfig(&Settings);
+    return true;
+  }
+
+  const char* activationCode = responseDoc["activationCode"] | "";
+  uint64_t expiresAt = responseDoc["expiresAt"] | 0;
+  bool changed = setActivationCode(activationCode, expiresAt);
+  if (changed) {
+    nvMem.saveConfig(&Settings);
+  }
+
+  String activationUrl = String(responseDoc["activationUrl"] | "");
+  Serial.println("Device activation required before mining can start");
+  if (strlen(Settings.ActivationCode) > 0) {
+    Serial.printf("Activation code: %s\n", Settings.ActivationCode);
+  }
+  if (activationUrl.length() > 0) {
+    Serial.printf("Activate at: %s\n", activationUrl.c_str());
+  }
+  return false;
+}
+
+static bool pollActivationStatus(const char* deviceId)
+{
+  HTTPClient http;
+  String endpoint = normalizeActivationApiBase() + "/status/" + String(deviceId);
+  http.setTimeout(10000);
+
+  if (!http.begin(endpoint)) {
+    Serial.println("Activation status poll: failed to begin HTTP");
+    return false;
+  }
+
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK)
+  {
+    http.end();
+    return false;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  StaticJsonDocument<640> responseDoc;
+  DeserializationError error = deserializeJson(responseDoc, payload);
+  if (error)
+  {
+    return false;
+  }
+
+  bool ready = readActivationStatus(responseDoc.as<JsonVariantConst>(), Settings.ActivationState);
+  if (ready)
+  {
+    strncpy(Settings.ActivationCode, "", sizeof(Settings.ActivationCode));
+    Settings.ActivationCodeExpiresAt = 0;
+    Settings.ActivationLastCheckAt = millis();
+    nvMem.saveConfig(&Settings);
+  }
+  return ready;
+}
+
+static bool ensureDeviceActivationReady()
+{
+  if (isActivationStateReady()) {
+    return true;
+  }
+
+  if (Settings.PayoutWalletHcash[0] == '\0') {
+    strncpy(Settings.PayoutWalletHcash, Settings.BtcWallet, sizeof(Settings.PayoutWalletHcash));
+    Settings.PayoutWalletHcash[sizeof(Settings.PayoutWalletHcash) - 1] = '\0';
+  }
+
+  char deviceId[16] = {0};
+  if (!getDeviceIdFromEfuse(deviceId, sizeof(deviceId))) {
+    Serial.println("Activation gate: failed to read device ID");
+    return false;
+  }
+
+  const uint64_t nowTick = millis();
+  bool hasValidCode = Settings.ActivationCode[0] != '\0' &&
+                      Settings.ActivationCodeExpiresAt > 0 &&
+                      (Settings.ActivationCodeExpiresAt > (uint64_t)time(nullptr) * 1000ULL + 60000ULL);
+
+  if (!hasValidCode) {
+    if (fetchActivationCodeFromServer(deviceId, Settings.PayoutWalletHcash)) {
+      return true;
+    }
+  }
+
+  if ((nowTick - Settings.ActivationLastCheckAt) > 5000ULL)
+  {
+    Settings.ActivationLastCheckAt = nowTick;
+    if (pollActivationStatus(deviceId)) {
+      return true;
+    }
+  }
+
+  mMonitor.NerdStatus = NM_waitingConfig;
+  if (Settings.ActivationCode[0] != '\0') {
+    Serial.printf("Waiting for activation claim. Code: %s\n", Settings.ActivationCode);
+  } else {
+    Serial.println("Waiting for activation claim...");
+  }
+  return false;
 }
 
 static bool authenticateDeviceWithPool(WiFiClient& poolClient, const char* wallet)
@@ -453,6 +690,12 @@ void runStratumWorker(void *name) {
       continue;
     } 
 
+    if (!ensureDeviceActivationReady()) {
+      MiningJobStop(job_pool, s_submition_map);
+      vTaskDelay(3000 / portTICK_PERIOD_MS);
+      continue;
+    }
+
     if(!checkPoolConnection()){
       //If server is not reachable add random delay for connection retries
       //Generate value between 1 and 60 secs
@@ -473,7 +716,7 @@ void runStratumWorker(void *name) {
         continue; 
       }
       
-      strcpy(mWorker.wName, Settings.BtcWallet);
+      strcpy(mWorker.wName, Settings.PayoutWalletHcash);
       strcpy(mWorker.wPass, Settings.PoolPassword);
       // STEP 2: Pool authorize work (Block Info)
       if (!tx_mining_auth(client, mWorker.wName, mWorker.wPass)) {

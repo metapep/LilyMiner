@@ -43,13 +43,13 @@ SDCard::~SDCard()
 {
     iSD_->end();
 #ifdef BUILD_SDSPI
-    if(newInstance_) 
+    if(newInstance_)
     {
         ispi_->end();
         delete ispi_;
     }
 #endif // BUILD_SDSPI
-    Serial.println("SDCard: Unmounted");  
+    Serial.println("SDCard: Unmounted");
 }
 
 /// @brief Check if the card is accessed right now.
@@ -64,8 +64,8 @@ void SDCard::terminate()
 {
     iSD_->end();
 #ifdef BUILD_SDSPI
-    ispi_->end(); 
-#endif   
+    ispi_->end();
+#endif
 }
 
 /// @brief Transfer settings from config file on a SD card to the device.
@@ -99,7 +99,7 @@ bool SDCard::loadConfigFile(TSettings* Settings)
             if (configFile)
             {
                 cardBusy_ = true;
-                StaticJsonDocument<512> json;
+                StaticJsonDocument<1024> json;
                 DeserializationError error = deserializeJson(json, configFile);
                 configFile.close();
                 cardBusy_ = false;
@@ -107,8 +107,8 @@ bool SDCard::loadConfigFile(TSettings* Settings)
                 if (!error)
                 {
                     serializeJsonPretty(json, Serial);
-                    Serial.print('\n');    
-                    if (json.containsKey(JSON_KEY_SSID)) {                
+                    Serial.print('\n');
+                    if (json.containsKey(JSON_KEY_SSID)) {
                         Settings->WifiSSID = json[JSON_KEY_SSID] | Settings->WifiSSID;
                     }
                     if (json.containsKey(JSON_KEY_PASW)) {
@@ -118,6 +118,21 @@ bool SDCard::loadConfigFile(TSettings* Settings)
                     strcpy(Settings->PoolApiBase, json[JSON_KEY_POOLAPIBASE] | Settings->PoolApiBase);
                     strcpy(Settings->PoolPassword, json[JSON_KEY_POOLPASS] | Settings->PoolPassword);
                     strcpy(Settings->BtcWallet, json[JSON_KEY_WALLETID] | Settings->BtcWallet);
+                    strcpy(Settings->PayoutWalletHcash, json[JSON_KEY_PAYOUT_WALLET_HCASH] | Settings->PayoutWalletHcash);
+                    if (strlen(Settings->PayoutWalletHcash) == 0)
+                    {
+                        strncpy(Settings->PayoutWalletHcash, Settings->BtcWallet, sizeof(Settings->PayoutWalletHcash));
+                        Settings->PayoutWalletHcash[sizeof(Settings->PayoutWalletHcash) - 1] = '\0';
+                    }
+                    strncpy(Settings->BtcWallet, Settings->PayoutWalletHcash, sizeof(Settings->BtcWallet));
+                    Settings->BtcWallet[sizeof(Settings->BtcWallet) - 1] = '\0';
+
+                    strcpy(Settings->OwnerWalletEvm, json[JSON_KEY_OWNER_WALLET_EVM] | Settings->OwnerWalletEvm);
+                    strcpy(Settings->ActivationState, json[JSON_KEY_ACTIVATION_STATE] | Settings->ActivationState);
+                    strcpy(Settings->ActivationCode, json[JSON_KEY_ACTIVATION_CODE] | Settings->ActivationCode);
+                    Settings->ActivationCodeExpiresAt = json[JSON_KEY_ACTIVATION_CODE_EXPIRES_AT] | Settings->ActivationCodeExpiresAt;
+                    Settings->ActivationLastCheckAt = json[JSON_KEY_ACTIVATION_LAST_CHECK_AT] | Settings->ActivationLastCheckAt;
+
                     if (json.containsKey(JSON_KEY_POOLPORT))
                         Settings->PoolPort = json[JSON_KEY_POOLPORT].as<int>();
                     if (json.containsKey(JSON_KEY_TIMEZONE))
@@ -134,8 +149,7 @@ bool SDCard::loadConfigFile(TSettings* Settings)
                     } else {
                         Settings->Brightness = 250;
                     }
-                    // Serial.printf("Carteira Lida SD:%s\n", Settings.BtcWallet);       
-                    Serial.printf("Carteira Lida SDs:%s\n", Settings->BtcWallet);                       
+                    Serial.printf("Carteira Lida SDs:%s\n", Settings->BtcWallet);
                     return true;
                 }
                 else
@@ -184,7 +198,7 @@ bool SDCard::cardAvailable()
 /// @return  true on success
 bool SDCard::initSDcard()
 {
-    if (!cardAvailable()) 
+    if (!cardAvailable())
     {
         Serial.println("SDCard: init SD card interface.");
 #if defined (BUILD_SDMMC_4)
