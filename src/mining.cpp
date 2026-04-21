@@ -419,10 +419,6 @@ static bool pollActivationStatus(const char* deviceId)
 
 static bool ensureDeviceActivationReady()
 {
-  if (isActivationStateReady()) {
-    return true;
-  }
-
   if (Settings.PayoutWalletHcash[0] == '\0') {
     strncpy(Settings.PayoutWalletHcash, Settings.BtcWallet, sizeof(Settings.PayoutWalletHcash));
     Settings.PayoutWalletHcash[sizeof(Settings.PayoutWalletHcash) - 1] = '\0';
@@ -1690,7 +1686,11 @@ void runMonitor(void *name)
         upTime ++;
       }
 
-      drawCurrentScreen(mElapsed);
+      if (mMonitor.NerdStatus == NM_waitingConfig) {
+        drawSetupScreen();
+      } else {
+        drawCurrentScreen(mElapsed);
+      }
 
       // Monitor state when hashrate is 0.0
       if (elapsedKHs == 0)
