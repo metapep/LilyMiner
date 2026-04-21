@@ -40,6 +40,7 @@
 
 enum NMState {
   NM_waitingConfig,
+  NM_waitingActivation,
   NM_Connecting,
   NM_hashing
 };

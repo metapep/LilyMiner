@@ -15,6 +15,7 @@
 #include "drivers/storage/SDCard.h"
 #include "ShaTests/nerdSHA_HWTest.h"
 #include "timeconst.h"
+#include "version.h"
 
 #ifdef TOUCH_ENABLE
 #include "TouchHandler.h"
@@ -106,6 +107,7 @@ void setup()
 
   /******** INIT NERDMINER ************/
   Serial.println("HashCash_NanoMinerV1 starting......");
+  Serial.printf("Firmware Version: %s\n", CURRENT_VERSION);
 
   /******** INIT DISPLAY ************/
   initDisplay();
@@ -201,6 +203,8 @@ void app_error_fault_handler(void *arg) {
 }
 
 void loop() {
+  static uint32_t sLastVersionLogMs = 0;
+
   // keep watching the push buttons:
   #ifdef PIN_BUTTON_1
     button1.tick();
@@ -213,6 +217,15 @@ void loop() {
 #ifdef TOUCH_ENABLE
   touchHandler.isTouched();
 #endif
+
+  const uint32_t now = millis();
+  if ((uint32_t)(now - sLastVersionLogMs) >= 10000U)
+  {
+    // Emit periodically so Web Serial clients can detect installed firmware version after attach.
+    Serial.printf("Firmware Version: %s\n", CURRENT_VERSION);
+    sLastVersionLogMs = now;
+  }
+
   wifiManagerProcess(); // avoid delays() in loop when non-blocking and other long running code
 
   vTaskDelay(50 / portTICK_PERIOD_MS);

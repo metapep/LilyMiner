@@ -449,7 +449,7 @@ static bool ensureDeviceActivationReady()
     }
   }
 
-  mMonitor.NerdStatus = NM_waitingConfig;
+  mMonitor.NerdStatus = NM_waitingActivation;
   if (Settings.ActivationCode[0] != '\0') {
     Serial.printf("Waiting for activation claim. Code: %s\n", Settings.ActivationCode);
   } else {
@@ -1686,7 +1686,7 @@ void runMonitor(void *name)
         upTime ++;
       }
 
-      if (mMonitor.NerdStatus == NM_waitingConfig) {
+      if (mMonitor.NerdStatus == NM_waitingConfig || mMonitor.NerdStatus == NM_waitingActivation) {
         drawSetupScreen();
       } else {
         drawCurrentScreen(mElapsed);
