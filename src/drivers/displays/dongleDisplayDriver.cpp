@@ -11,6 +11,7 @@
 #include "drivers/storage/storage.h"
 #include "OpenFontRender.h"
 #include "rotation.h"
+#include <WiFi.h>
 
 #ifdef USE_LED
 #include <FastLED.h>
@@ -166,7 +167,13 @@ void dongleDisplay_SetupScreen(void)
     return;
   }
   CLEAR_SCREEN();
-  if (Settings.ActivationCode[0] != '\0')
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    PRINT_STR("WiFi setup required");
+    PRINT_STR("Join AP + open");
+    PRINT_STR("192.168.4.1");
+  }
+  else if (Settings.ActivationCode[0] != '\0')
   {
     PRINT_STR("Activate device");
     PRINT_VALUE(Settings.ActivationCode);
@@ -174,7 +181,9 @@ void dongleDisplay_SetupScreen(void)
   }
   else
   {
-    PRINT_STR("Use WiFi for setup...");
+    PRINT_STR("Activation required");
+    PRINT_STR("Requesting code...");
+    PRINT_STR("activate.hcash-dev.network");
   }
   PUSH_SCREEN();
 }

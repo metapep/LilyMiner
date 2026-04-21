@@ -11,6 +11,7 @@
 #include "drivers/storage/storage.h"
 #include "OpenFontRender.h"
 #include "rotation.h"
+#include <WiFi.h>
 
 #define WIDTH 340
 #define HEIGHT 170
@@ -262,14 +263,36 @@ void tDisplay_LoadingScreen(void)
 void tDisplay_SetupScreen(void)
 {
   tft.pushImage(0, 0, setupModeWidth, setupModeHeight, setupModeScreen);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  // WiFi setup must take priority: users cannot activate until networking is configured.
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    tft.drawString("WiFi setup required", 8, 90, FONT2);
+    tft.drawString("Connect to AP and open", 8, 114, FONT2);
+    tft.drawString("192.168.4.1", 8, 138, FONT2);
+
+    String apSsid = WiFi.softAPSSID();
+    if (apSsid.length() > 0)
+    {
+      String apLabel = "AP: " + apSsid;
+      tft.drawString(apLabel.c_str(), 8, 154, FONT2);
+    }
+    return;
+  }
+
+  // Once WiFi is up, show activation state (with code when available).
+  tft.drawString("Activation required", 8, 90, FONT2);
   if (Settings.ActivationCode[0] != '\0')
   {
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("Activation required", 8, 90, FONT2);
     tft.drawString("Code:", 8, 114, FONT2);
     tft.drawString(Settings.ActivationCode, 70, 114, FONT4);
-    tft.drawString("activate.hcash-dev.network", 8, 138, FONT2);
   }
+  else
+  {
+    tft.drawString("Requesting code...", 8, 114, FONT2);
+  }
+  tft.drawString("activate.hcash-dev.network", 8, 138, FONT2);
 }
 
 void tDisplay_AnimateCurrentScreen(unsigned long frame)
