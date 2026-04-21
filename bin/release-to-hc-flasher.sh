@@ -76,9 +76,15 @@ firmware_src="$(ls -1t "${LILY_ROOT}"/firmware/*/"${ENV_NAME}_firmware.bin" 2>/d
 
 factory_dst="${FLASHER_DIR}/web/firmware/HashCash_NanoMinerV1_factory.bin"
 firmware_dst="${FLASHER_DIR}/web/firmware/HashCash_NanoMinerV1_firmware.bin"
+dist_factory_dst="${FLASHER_DIR}/dist/web/firmware/HashCash_NanoMinerV1_factory.bin"
+dist_firmware_dst="${FLASHER_DIR}/dist/web/firmware/HashCash_NanoMinerV1_firmware.bin"
 
 cp -f "${factory_src}" "${factory_dst}"
 cp -f "${firmware_src}" "${firmware_dst}"
+if [[ -d "${FLASHER_DIR}/dist/web/firmware" ]]; then
+  cp -f "${factory_src}" "${dist_factory_dst}"
+  cp -f "${firmware_src}" "${dist_firmware_dst}"
+fi
 
 full_version="$(jq -r '.version // empty' "${FULL_MANIFEST}")"
 update_version="$(jq -r '.version // empty' "${UPDATE_MANIFEST}")"
@@ -120,10 +126,18 @@ log "  ${firmware_src}"
 log "Destination binaries:"
 log "  ${factory_dst}"
 log "  ${firmware_dst}"
+if [[ -d "${FLASHER_DIR}/dist/web/firmware" ]]; then
+  log "  ${dist_factory_dst}"
+  log "  ${dist_firmware_dst}"
+fi
 log "Bumped flasher manifest version: ${base_version} -> ${release_version}"
 log "Stamped flasher uploadedAt: ${release_uploaded_at}"
 
-shasum -a 256 "${factory_src}" "${firmware_src}" "${factory_dst}" "${firmware_dst}"
+checksum_targets=("${factory_src}" "${firmware_src}" "${factory_dst}" "${firmware_dst}")
+if [[ -d "${FLASHER_DIR}/dist/web/firmware" ]]; then
+  checksum_targets+=("${dist_factory_dst}" "${dist_firmware_dst}")
+fi
+shasum -a 256 "${checksum_targets[@]}"
 
 log "Flasher repo status:"
 git -C "${FLASHER_DIR}" status --short
