@@ -333,7 +333,7 @@ static bool fetchActivationCodeFromServer(const char* deviceId, const char* payo
   }
   http.addHeader("Content-Type", "application/json");
   int httpCode = http.POST(body);
-  if (httpCode != HTTP_CODE_OK)
+  if (httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_CREATED)
   {
     Serial.printf("Activation code request failed: HTTP %d\n", httpCode);
     http.end();
