@@ -265,10 +265,10 @@ void tDisplay_SetupScreen(void)
   if (Settings.ActivationCode[0] != '\0')
   {
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("Activation required", 8, 10, FONT2);
-    tft.drawString("Code:", 8, 34, FONT2);
-    tft.drawString(Settings.ActivationCode, 70, 34, FONT4);
-    tft.drawString("activate.hcash-dev.network", 8, 58, FONT2);
+    tft.drawString("Activation required", 8, 90, FONT2);
+    tft.drawString("Code:", 8, 114, FONT2);
+    tft.drawString(Settings.ActivationCode, 70, 114, FONT4);
+    tft.drawString("activate.hcash-dev.network", 8, 138, FONT2);
   }
 }
 
