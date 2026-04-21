@@ -8,6 +8,7 @@
 #include "media/Free_Fonts.h"
 #include "version.h"
 #include "monitor.h"
+#include "drivers/storage/storage.h"
 #include "OpenFontRender.h"
 #include "rotation.h"
 
@@ -42,6 +43,7 @@ int fadeAmount = 0;
 #endif // USE_LED
 
 extern monitor_data mMonitor;
+extern TSettings Settings;
 
 #define BACK_COLOR TFT_BLACK
 #define VALUE_COLOR TFT_WHITE
@@ -164,7 +166,16 @@ void dongleDisplay_SetupScreen(void)
     return;
   }
   CLEAR_SCREEN();
-  PRINT_STR("Use WiFi for setup...");
+  if (Settings.ActivationCode[0] != '\0')
+  {
+    PRINT_STR("Activate device");
+    PRINT_VALUE(Settings.ActivationCode);
+    PRINT_STR("activate.hcash-dev.network");
+  }
+  else
+  {
+    PRINT_STR("Use WiFi for setup...");
+  }
   PUSH_SCREEN();
 }
 

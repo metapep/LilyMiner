@@ -8,6 +8,7 @@
 #include "media/Free_Fonts.h"
 #include "version.h"
 #include "monitor.h"
+#include "drivers/storage/storage.h"
 #include "OpenFontRender.h"
 #include "rotation.h"
 
@@ -17,6 +18,7 @@
 OpenFontRender render;
 TFT_eSPI tft = TFT_eSPI();                  // Invoke library, pins defined in User_Setup.h
 TFT_eSprite background = TFT_eSprite(&tft); // Invoke library sprite
+extern TSettings Settings;
 
 void tDisplay_Init(void)
 {
@@ -260,6 +262,14 @@ void tDisplay_LoadingScreen(void)
 void tDisplay_SetupScreen(void)
 {
   tft.pushImage(0, 0, setupModeWidth, setupModeHeight, setupModeScreen);
+  if (Settings.ActivationCode[0] != '\0')
+  {
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("Activation required", 8, 10, FONT2);
+    tft.drawString("Code:", 8, 34, FONT2);
+    tft.drawString(Settings.ActivationCode, 70, 34, FONT4);
+    tft.drawString("activate.hcash-dev.network", 8, 58, FONT2);
+  }
 }
 
 void tDisplay_AnimateCurrentScreen(unsigned long frame)
