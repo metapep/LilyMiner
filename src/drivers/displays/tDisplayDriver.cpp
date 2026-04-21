@@ -12,6 +12,7 @@
 #include "drivers/storage/storage.h"
 #include "OpenFontRender.h"
 #include "rotation.h"
+#include <WiFi.h>
 
 #define WIDTH 340
 #define HEIGHT 170
@@ -263,9 +264,13 @@ void tDisplay_LoadingScreen(void)
 
 void tDisplay_SetupScreen(void)
 {
-  if (mMonitor.NerdStatus == NM_waitingConfig)
+  const bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+  const bool showActivationScreen = wifiConnected && (mMonitor.NerdStatus == NM_waitingActivation);
+
+  if (!showActivationScreen)
   {
-    // Keep setup screen clean: just the original WiFi setup background.
+    // Keep setup screen clean: always show this until WiFi is connected
+    // and activation wait mode is explicitly active.
     tft.pushImage(0, 0, setupModeWidth, setupModeHeight, setupModeScreen);
     return;
   }
