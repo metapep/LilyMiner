@@ -28,13 +28,18 @@ max_semver() {
   printf '%s\n%s\n' "${left}" "${right}" | sort -V | tail -n 1
 }
 
-set_manifest_version() {
+set_manifest_metadata() {
   local manifest_path="$1"
   local new_version="$2"
+  local uploaded_at="$3"
   local tmp_manifest
 
   tmp_manifest="$(mktemp "${TMPDIR:-/tmp}/manifest.XXXXXX.json")"
-  jq --arg version "${new_version}" '.version = $version' "${manifest_path}" > "${tmp_manifest}"
+  jq \
+    --arg version "${new_version}" \
+    --arg uploaded_at "${uploaded_at}" \
+    '.version = $version | .uploadedAt = $uploaded_at' \
+    "${manifest_path}" > "${tmp_manifest}"
   mv "${tmp_manifest}" "${manifest_path}"
 }
 
@@ -85,15 +90,16 @@ is_semver "${update_version}" || die "Unsupported update manifest version format
 
 base_version="$(max_semver "${full_version}" "${update_version}")"
 release_version="$(bump_patch "${base_version}")"
+release_uploaded_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-set_manifest_version "${FULL_MANIFEST}" "${release_version}"
-set_manifest_version "${UPDATE_MANIFEST}" "${release_version}"
+set_manifest_metadata "${FULL_MANIFEST}" "${release_version}" "${release_uploaded_at}"
+set_manifest_metadata "${UPDATE_MANIFEST}" "${release_version}" "${release_uploaded_at}"
 
 if [[ -f "${DIST_FULL_MANIFEST}" ]]; then
-  set_manifest_version "${DIST_FULL_MANIFEST}" "${release_version}"
+  set_manifest_metadata "${DIST_FULL_MANIFEST}" "${release_version}" "${release_uploaded_at}"
 fi
 if [[ -f "${DIST_UPDATE_MANIFEST}" ]]; then
-  set_manifest_version "${DIST_UPDATE_MANIFEST}" "${release_version}"
+  set_manifest_metadata "${DIST_UPDATE_MANIFEST}" "${release_version}" "${release_uploaded_at}"
 fi
 
 html_targets=()
@@ -115,6 +121,7 @@ log "Destination binaries:"
 log "  ${factory_dst}"
 log "  ${firmware_dst}"
 log "Bumped flasher manifest version: ${base_version} -> ${release_version}"
+log "Stamped flasher uploadedAt: ${release_uploaded_at}"
 
 shasum -a 256 "${factory_src}" "${firmware_src}" "${factory_dst}" "${firmware_dst}"
 
