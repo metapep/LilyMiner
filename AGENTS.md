@@ -8,6 +8,10 @@ This repository contains LilyMiner firmware sources and release artifacts.
 - The script must be the default path for producing new `HashCash_NanoMinerV1` binaries and copying them into `../hc-flasher/web/firmware`.
 - Do not manually copy firmware binaries into `hc-flasher` when the script can be used.
 
+## Completion Gate (Mandatory)
+- Treat `bin/release-to-hc-flasher.sh` as the required final step after any retained firmware change.
+- Do not mark firmware work complete until the script runs successfully and `hc-flasher` release deltas are visible in git status.
+
 ## Standard Command
 ```bash
 bin/release-to-hc-flasher.sh
