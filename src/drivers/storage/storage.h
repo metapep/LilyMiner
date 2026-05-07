@@ -15,8 +15,8 @@
 #endif
 #define DEFAULT_AP_WIFIPW	"JELLOJLANT"
 #define DEFAULT_WIFI_WIFIPW	"JELLOJREAD"
-#define DEFAULT_POOLURL		"stratum+tcp://stratum.hcash-dev.network:3333"
-#define DEFAULT_POOL_API_BASE	""
+#define DEFAULT_POOLURL		"stratum+tcp://stratum.hashcash-test.network:3333"
+#define DEFAULT_POOL_API_BASE	"http://stratum.hashcash-test.network:3334"
 #define DEFAULT_POOLPASS	"x"
 #define DEFAULT_WALLETID	"hcash1qch57r3rsh2wcy0dr8t0s8ehvm33e20cjyhpy3h"
 #define DEFAULT_OWNER_WALLET_EVM	""

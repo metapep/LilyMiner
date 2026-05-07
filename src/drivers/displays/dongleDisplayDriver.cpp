@@ -177,13 +177,13 @@ void dongleDisplay_SetupScreen(void)
   {
     PRINT_STR("Activate device");
     PRINT_VALUE(Settings.ActivationCode);
-    PRINT_STR("activate.hcash-dev.network");
+    PRINT_STR("activate.hashcash-test.network");
   }
   else
   {
     PRINT_STR("Activation required");
     PRINT_STR("Requesting code...");
-    PRINT_STR("activate.hcash-dev.network");
+    PRINT_STR("activate.hashcash-test.network");
   }
   PUSH_SCREEN();
 }

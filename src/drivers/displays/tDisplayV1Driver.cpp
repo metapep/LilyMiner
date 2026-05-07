@@ -273,7 +273,7 @@ void tDisplay_SetupScreen(void)
   {
     tft.drawString("Requesting code...", 8, 34, FONT2);
   }
-  tft.drawString("activate.hcash-dev.network", 8, 58, FONT2);
+  tft.drawString("activate.hashcash-test.network", 8, 58, FONT2);
 }
 
 void tDisplay_AnimateCurrentScreen(unsigned long frame)
