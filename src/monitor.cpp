@@ -519,6 +519,31 @@ String getCurrentHashRate(unsigned long mElapsed)
   }
 }
 
+// Per device-class plan F-10: shared helper that fills classId +
+// classCapKHs on any data struct. Used by getMiningData/getClockData/
+// getCoinData so the class label is available on every screen.
+//
+// Bypass devices report classId='JYPASS' with target=0 (uncapped sentinel).
+// Render the cap as "Unlimited" instead of "0 KH/s" so the display reads
+// truthfully — the device IS uncapped end-to-end (firmware throttle skipped
+// when targetHs==0, pool token bucket skipped on mode='bypass').
+//
+// Defined before getMiningData so the template body is visible at every
+// call site (C++ requires template definitions at point of instantiation).
+template <typename T>
+static void fillClassLabel(T& data) {
+  const char* cid = getCurrentClassId();
+  data.classId = cid != nullptr ? String(cid) : String("");
+  uint32_t capHs = getCurrentTargetHs();
+  if (cid != nullptr && strcmp(cid, "JYPASS") == 0) {
+    data.classCapKHs = String("Unlimited");
+  } else {
+    char capLabel[24] = {0};
+    snprintf(capLabel, sizeof(capLabel), "%lu KH/s", (unsigned long)(capHs / 1000U));
+    data.classCapKHs = String(capLabel);
+  }
+}
+
 mining_data getMiningData(unsigned long mElapsed)
 {
   mining_data data;
@@ -545,34 +570,13 @@ mining_data getMiningData(unsigned long mElapsed)
   data.timeMining = timeMining;
   data.valids = valids;
   // Per device-class plan F-10: pull the policy-derived class label and
-  // cap into the shared mining_data struct. Display drivers render when
-  // ready; headless boards still get the values via the existing
-  // serial log lines (see runMonitor below).
-  {
-    const char* cid = getCurrentClassId();
-    data.classId = cid != nullptr ? String(cid) : String("");
-    uint32_t capHs = getCurrentTargetHs();
-    char capLabel[24] = {0};
-    snprintf(capLabel, sizeof(capLabel), "%lu KH/s", (unsigned long)(capHs / 1000U));
-    data.classCapKHs = String(capLabel);
-  }
+  // cap into the shared mining_data struct via the JYPASS-aware helper
+  // (defined below) so bypass devices read 'Unlimited' instead of '0 KH/s'.
+  fillClassLabel(data);
   data.temp = String(temperatureRead(), 0);
   data.currentTime = getTime();
 
   return data;
-}
-
-// Per device-class plan F-10: shared helper that fills classId +
-// classCapKHs on any data struct. Used by getMiningData/getClockData/
-// getCoinData so the class label is available on every screen.
-template <typename T>
-static void fillClassLabel(T& data) {
-  const char* cid = getCurrentClassId();
-  data.classId = cid != nullptr ? String(cid) : String("");
-  uint32_t capHs = getCurrentTargetHs();
-  char capLabel[24] = {0};
-  snprintf(capLabel, sizeof(capLabel), "%lu KH/s", (unsigned long)(capHs / 1000U));
-  data.classCapKHs = String(capLabel);
 }
 
 clock_data getClockData(unsigned long mElapsed)

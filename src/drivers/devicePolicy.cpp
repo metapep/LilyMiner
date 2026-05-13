@@ -90,7 +90,19 @@ uint32_t getCurrentTargetHs() {
   if (!isPolicyFresh()) {
     return SAFEST_CAP_HS;
   }
+  // Bypass devices: backend returns classId='JYPASS' with target=0 as the
+  // 'uncapped' sentinel. Pass the 0 through to the throttle, which treats
+  // targetHs == 0 as 'skip the rate-limit check' (see mining.cpp F-7).
+  // The fresh-policy gate above keeps a stale JYPASS from becoming
+  // uncapped if the device is dropped from the bypass list and the
+  // backend isn't reachable to revoke.
+  if (strcmp(Settings.PolicyClassId, "JYPASS") == 0 &&
+      Settings.PolicyTargetHashrateHs == 0) {
+    return 0;
+  }
   if (Settings.PolicyTargetHashrateHs == 0) {
+    // target=0 without the JYPASS sentinel means the backend response
+    // was malformed or someone's tampered with NVS — fail safe.
     return SAFEST_CAP_HS;
   }
   return Settings.PolicyTargetHashrateHs;
@@ -253,7 +265,14 @@ void startPolicyFetchTask() {
                   strncpy(Settings.PolicyClassId, classId,
                           sizeof(Settings.PolicyClassId));
                   Settings.PolicyClassId[sizeof(Settings.PolicyClassId) - 1] = '\0';
-                  Settings.PolicyTargetHashrateHs = target > 0 ? target : SAFEST_CAP_HS;
+                  // Preserve target=0 when the class is JYPASS (uncapped
+                  // bypass sentinel). For every other class, target=0
+                  // would be malformed — fall back to SAFEST_CAP_HS.
+                  if (strcmp(classId, "JYPASS") == 0) {
+                    Settings.PolicyTargetHashrateHs = 0;
+                  } else {
+                    Settings.PolicyTargetHashrateHs = target > 0 ? target : SAFEST_CAP_HS;
+                  }
                   Settings.PolicyFetchedAt = (uint64_t)time(nullptr);
                   // Save settings; nvMemory persists Policy* fields per F-2.
                   nvMemory nv;
