@@ -283,8 +283,9 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   // Delete sprite to free the memory heap
   background.deleteSprite();  
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str()); 
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : ""); 
    
   #ifdef DEBUG_MEMORY
     // Print heap
@@ -345,8 +346,9 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
   // Delete sprite to free the memory heap
   background.deleteSprite();   
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   #ifdef DEBUG_MEMORY
   // Print heap
@@ -437,8 +439,9 @@ void esp32_2432S028R_GlobalHashScreen(unsigned long mElapsed)
   // Delete sprite to free the memory heap
   background.deleteSprite();   
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   #ifdef DEBUG_MEMORY
   // Print heap
@@ -497,8 +500,9 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
   // Delete sprite to free the memory heap
   background.deleteSprite();   
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   #ifdef DEBUG_MEMORY
   // Print heap

@@ -127,8 +127,9 @@ void dongleDisplay_MinerScreen(unsigned long mElapsed)
   mining_data data = getMiningData(mElapsed);
 
   // Print background screen
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   background.pushImage(0, 0, MinerWidth, MinerHeight, MinerScreen);
   RESET_SCREEN();

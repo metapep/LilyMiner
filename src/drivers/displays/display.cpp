@@ -65,6 +65,15 @@ DisplayDriver *currentDisplayDriver = &sp_kcDisplayDriver;
 #endif
 
 
+// Per device-class plan F-10: every driver's main mining screen has
+// `mining_data data` (from getMiningData) which carries `data.classId`
+// (e.g., "J50") and `data.classCapKHs` (e.g., "50 KH/s"). Drivers that
+// render to a TFT/OLED can opt in by adding a `render.drawString(
+// data.classId.c_str(), x, y, color)` call where appropriate for their
+// board layout. The serial log line in every driver already includes
+// the class tag; the production HashCash Nano (per C5) is headless
+// from a NerdMinerV2-driver perspective and uses the serial log only.
+
 // Initialize the display
 void initDisplay()
 {

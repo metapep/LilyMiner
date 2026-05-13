@@ -161,8 +161,9 @@ void t_hmiDisplay_MinerScreen(unsigned long mElapsed)
 {
   mining_data data = getMiningData(mElapsed);
   background.pushImage(0, 0, MinerWidth, 170, MinerScreen);
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
    // Hashrate
   render.setFontSize(35);
   render.setCursor(19, 118);
@@ -215,8 +216,9 @@ void t_hmiDisplay_ClockScreen(unsigned long mElapsed)
   // Print background screen
   background.pushImage(0, 0, minerClockWidth, 170 /*minerClockHeight*/, minerClockScreen);
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   // Hashrate
   render.setFontSize(25);
@@ -256,8 +258,9 @@ void t_hmiDisplay_GlobalHashScreen(unsigned long mElapsed)
   // Print background screen
   background.pushImage(0, 0, globalHashWidth, 170 /* globalHashHeight */, globalHashScreen);
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   // Print BTC Price
   background.setFreeFont(FSSB9);
@@ -321,8 +324,9 @@ void t_hmiDisplay_BTCprice(unsigned long mElapsed)
   // Print background screen
   background.pushImage(0, 0, priceScreenWidth, 170 /*priceScreenHeight*/, priceScreen);
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   // Hashrate
   render.setFontSize(25);

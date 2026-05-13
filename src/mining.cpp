@@ -14,6 +14,9 @@
 #include "timeconst.h"
 #include "drivers/displays/display.h"
 #include "drivers/storage/storage.h"
+#include "drivers/devicePolicy.h"
+extern "C" void recordBootAttempt();
+extern "C" void markBootValidIfHealthy();
 #include "drivers/storage/nvMemory.h"
 #include <mutex>
 #include <list>
@@ -112,7 +115,7 @@ static void normalizeWalletLowercase(const char* input, char* output, size_t out
   output[i] = '\0';
 }
 
-static bool getDeviceIdFromEfuse(char* output, size_t outSize)
+bool getDeviceIdFromEfuse(char* output, size_t outSize)
 {
   if (output == nullptr || outSize < 13) {
     return false;
@@ -186,6 +189,39 @@ static bool resolveDeviceHmacKeyId(hmac_key_id_t* keyIdOut)
   return true;
 }
 #endif
+
+// Per device-class plan F-5 / F-8: HMAC over arbitrary message using the
+// same eFuse key buildDeviceProof() uses. Exposed via mining.h for the
+// policy / OTA-report client (drivers/devicePolicy.cpp). Returns false
+// when HCASH_DEVICE_AUTH_SUPPORTED == 0 or the key isn't provisioned —
+// callers should treat that as a hard failure (don't fall back to no-auth).
+bool computeDeviceHmacHex(const char* message, size_t messageLen,
+                          char* outHex, size_t outHexSize)
+{
+  if (message == nullptr || outHex == nullptr || outHexSize < 65) {
+    return false;
+  }
+#if HCASH_DEVICE_AUTH_SUPPORTED
+  hmac_key_id_t keyId = HMAC_KEY0;
+  if (!resolveDeviceHmacKeyId(&keyId)) {
+    Serial.println("computeDeviceHmacHex: HMAC_UP eFuse key missing");
+    return false;
+  }
+  uint8_t hmacDigest[32] = {0};
+  esp_err_t err = esp_hmac_calculate(keyId, message, messageLen, hmacDigest);
+  if (err != ESP_OK) {
+    Serial.printf("computeDeviceHmacHex: esp_hmac_calculate err=%d (%s)\n",
+                  (int)err, esp_err_to_name(err));
+    return false;
+  }
+  return bytesToLowerHex(hmacDigest, sizeof(hmacDigest), outHex, outHexSize);
+#else
+  (void)messageLen;
+  Serial.println("computeDeviceHmacHex: unsupported on this target");
+  return false;
+#endif
+}
+
 
 static bool buildDeviceProof(const char* wallet, const device_challenge& challenge, char* proofOut, size_t proofOutSize)
 {
@@ -1029,6 +1065,12 @@ void minerWorkerSw(void * task_id)
   std::shared_ptr<JobResult> result;
   uint8_t hash[32];
   uint32_t wdt_counter = 0;
+  // TODO(device-class plan F-7): integrate hashrate throttle here.
+  // Implementation pattern: maintain a 5s rolling window of hashes
+  // computed; when the rolling rate exceeds getCurrentTargetHs() (from
+  // drivers/devicePolicy.h), insert vTaskDelay(...) until the rolling
+  // average drops back into compliance. Honors the policy TTL fallback
+  // (SAFEST_CAP_HS) when policy is stale.
   while (1)
   {
     {
@@ -1054,6 +1096,13 @@ void minerWorkerSw(void * task_id)
       result->id = job->id;
       result->nonce_count = job->nonce_count;
       uint8_t job_in_work = job->id & 0xFF;
+      // Per device-class plan F-7: token-bucket throttle. Apply between
+      // nonce batches so the rolling average stays at or below the
+      // policy-derived target. Every 256 hashes is enough granularity at
+      // ESP32-S3 SHA throughput (~250 KH/s); shorter batches add overhead.
+      static thread_local uint32_t throttleHashesSinceCheck = 0;
+      static thread_local uint64_t throttleWindowStartUs = 0;
+      const uint32_t targetHs = getCurrentTargetHs();
       for (uint32_t n = 0; n < job->nonce_count; ++n)
       {
         ((uint32_t*)(job->sha_buffer+64+12))[0] = job->nonce_start+n;
@@ -1072,6 +1121,35 @@ void minerWorkerSw(void * task_id)
         {
           result->nonce_count = n+1;
           break;
+        }
+
+        // F-7 throttle check (~every 256 hashes). The 5s rolling window
+        // keeps the average effective rate at or below targetHs; when
+        // we're ahead of pace, vTaskDelay back into compliance.
+        throttleHashesSinceCheck++;
+        if ((n & 0xFF) == 0xFF && targetHs > 0) {
+          uint64_t nowUs = esp_timer_get_time();
+          if (throttleWindowStartUs == 0) {
+            throttleWindowStartUs = nowUs;
+          }
+          uint64_t elapsedUs = nowUs - throttleWindowStartUs;
+          if (elapsedUs > 0) {
+            // expectedUs = hashesDone * 1e6 / targetHs. If we beat that
+            // (less elapsed than expected), sleep the difference.
+            uint64_t expectedUs = ((uint64_t)throttleHashesSinceCheck * 1000000ULL) / (uint64_t)targetHs;
+            if (expectedUs > elapsedUs) {
+              uint64_t sleepUs = expectedUs - elapsedUs;
+              // Cap sleep to 200ms per check to keep the inner loop responsive
+              // to job changes; the next check brings us back into compliance.
+              if (sleepUs > 200000ULL) sleepUs = 200000ULL;
+              vTaskDelay((uint32_t)((sleepUs + 999ULL) / 1000ULL) / portTICK_PERIOD_MS);
+            }
+          }
+          // Reset the window every 5 seconds (per F-7 spec).
+          if (elapsedUs > 5000000ULL) {
+            throttleWindowStartUs = nowUs;
+            throttleHashesSinceCheck = 0;
+          }
         }
       }
     } else
@@ -1270,6 +1348,12 @@ void minerWorkerHw(void * task_id)
       esp_sha_acquire_hardware();
       REG_WRITE(SHA_MODE_REG, SHA2_256);
       uint32_t nend = job->nonce_start + job->nonce_count;
+      // Per device-class plan F-7: token-bucket throttle for HW worker
+      // (mirrors the SW worker pattern). Cap pulled from policy on every
+      // batch so class changes propagate within one job.
+      static thread_local uint32_t hwThrottleHashesSinceCheck = 0;
+      static thread_local uint64_t hwThrottleWindowStartUs = 0;
+      const uint32_t hwTargetHs = getCurrentTargetHs();
       for (uint32_t n = job->nonce_start; n < nend; ++n)
       {
         //nerd_sha_hal_wait_idle();
@@ -1320,6 +1404,31 @@ void minerWorkerHw(void * task_id)
         {
           result->nonce_count = n-job->nonce_start+1;
           break;
+        }
+
+        // F-7 throttle for HW worker: same 5s rolling window as SW.
+        // Released hardware briefly during sleep is fine — the next
+        // iteration re-acquires implicitly via the shared nerd_sha_ll_*
+        // sequence. Cap sleep to 200ms per check.
+        hwThrottleHashesSinceCheck++;
+        if ((n & 0xFF) == 0xFF && hwTargetHs > 0) {
+          uint64_t nowUs = esp_timer_get_time();
+          if (hwThrottleWindowStartUs == 0) {
+            hwThrottleWindowStartUs = nowUs;
+          }
+          uint64_t elapsedUs = nowUs - hwThrottleWindowStartUs;
+          if (elapsedUs > 0) {
+            uint64_t expectedUs = ((uint64_t)hwThrottleHashesSinceCheck * 1000000ULL) / (uint64_t)hwTargetHs;
+            if (expectedUs > elapsedUs) {
+              uint64_t sleepUs = expectedUs - elapsedUs;
+              if (sleepUs > 200000ULL) sleepUs = 200000ULL;
+              vTaskDelay((uint32_t)((sleepUs + 999ULL) / 1000ULL) / portTICK_PERIOD_MS);
+            }
+          }
+          if (elapsedUs > 5000000ULL) {
+            hwThrottleWindowStartUs = nowUs;
+            hwThrottleHashesSinceCheck = 0;
+          }
         }
       }
       esp_sha_release_hardware();
@@ -1503,6 +1612,14 @@ void minerWorkerHw(void * task_id)
       uint8_t job_in_work = job->id & 0xFF;
       memcpy(sha_buffer, job->sha_buffer, 80);
 
+      // Per device-class plan F-7 (U8 fix): same throttle pattern as the
+      // SW worker + S3-class HW worker. Cap pulled per batch from policy.
+      // Classic ESP32 isn't part of the OTA-managed fleet (per C5) but
+      // still benefits from class enforcement when running against the
+      // backend.
+      static thread_local uint32_t classicHwHashesSinceCheck = 0;
+      static thread_local uint64_t classicHwWindowStartUs = 0;
+      const uint32_t classicHwTargetHs = getCurrentTargetHs();
       esp_sha_lock_engine(SHA2_256);
       for (uint32_t n = 0; n < job->nonce_count; ++n)
       {
@@ -1548,6 +1665,28 @@ void minerWorkerHw(void * task_id)
         {
           result->nonce_count = n+1;
           break;
+        }
+
+        // F-7 throttle for classic ESP32 HW worker.
+        classicHwHashesSinceCheck++;
+        if ((n & 0xFF) == 0xFF && classicHwTargetHs > 0) {
+          uint64_t nowUs = esp_timer_get_time();
+          if (classicHwWindowStartUs == 0) {
+            classicHwWindowStartUs = nowUs;
+          }
+          uint64_t elapsedUs = nowUs - classicHwWindowStartUs;
+          if (elapsedUs > 0) {
+            uint64_t expectedUs = ((uint64_t)classicHwHashesSinceCheck * 1000000ULL) / (uint64_t)classicHwTargetHs;
+            if (expectedUs > elapsedUs) {
+              uint64_t sleepUs = expectedUs - elapsedUs;
+              if (sleepUs > 200000ULL) sleepUs = 200000ULL;
+              vTaskDelay((uint32_t)((sleepUs + 999ULL) / 1000ULL) / portTICK_PERIOD_MS);
+            }
+          }
+          if (elapsedUs > 5000000ULL) {
+            classicHwWindowStartUs = nowUs;
+            classicHwHashesSinceCheck = 0;
+          }
         }
       }
       esp_sha_unlock_engine(SHA2_256);

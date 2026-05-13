@@ -78,6 +78,13 @@ typedef struct {
   String valids;
   String temp;
   String currentTime;
+  // Per device-class plan F-10. classId is the policy-derived class
+  // label (e.g., "J50"); classCapKHs is the human-readable cap label
+  // (e.g., "50 KH/s"). Empty when no policy has been fetched yet (cold
+  // boot pre-first-fetch). Display drivers should render these next to
+  // currentHashRate without swapping skins/wallpapers.
+  String classId;
+  String classCapKHs;
 }mining_data;
 
 typedef struct {

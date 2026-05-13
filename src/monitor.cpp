@@ -6,6 +6,7 @@
 #include <WiFiUdp.h>
 #include <list>
 #include "mining.h"
+#include "drivers/devicePolicy.h"  // getCurrentClassId, getCurrentTargetHs (F-10)
 #include "utils.h"
 #include "monitor.h"
 #include "drivers/storage/storage.h"
@@ -543,6 +544,18 @@ mining_data getMiningData(unsigned long mElapsed)
   data.bestDiff = best_diff_string;
   data.timeMining = timeMining;
   data.valids = valids;
+  // Per device-class plan F-10: pull the policy-derived class label and
+  // cap into the shared mining_data struct. Display drivers render when
+  // ready; headless boards still get the values via the existing
+  // serial log lines (see runMonitor below).
+  {
+    const char* cid = getCurrentClassId();
+    data.classId = cid != nullptr ? String(cid) : String("");
+    uint32_t capHs = getCurrentTargetHs();
+    char capLabel[24] = {0};
+    snprintf(capLabel, sizeof(capLabel), "%lu KH/s", (unsigned long)(capHs / 1000U));
+    data.classCapKHs = String(capLabel);
+  }
   data.temp = String(temperatureRead(), 0);
   data.currentTime = getTime();
 

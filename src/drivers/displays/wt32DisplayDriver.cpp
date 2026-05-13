@@ -302,8 +302,9 @@ void wt32Display_NoScreen(unsigned long mElapsed)
   mining_data data = getMiningData(mElapsed);
 
   // Print hashrate to serial
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
   //Serial.printf(">>> Temperature: %s\n", data.temp.c_str());
 
   lv_label_set_text(ui_lblhashrate, data.currentHashRate.c_str());

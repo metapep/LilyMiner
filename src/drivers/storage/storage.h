@@ -65,6 +65,36 @@
 #define JSON_SPIFFS_KEY_STATS2NV	"saveStatsToNVS"
 #define JSON_SPIFFS_KEY_INVCOLOR	"invertColors"
 #define JSON_SPIFFS_KEY_BRIGHTNESS	"Brightness"
+// Per device-class plan F-2 / F-3 / F-9: policy cache + boot-strikes counter.
+// Persisted alongside activation state in the same NVS layer (nvMemory.cpp).
+#define JSON_SPIFFS_KEY_POLICY_CLASS_ID				"policyClassId"
+#define JSON_SPIFFS_KEY_POLICY_TARGET_HASHRATE_HS	"policyTargetHashrateHs"
+#define JSON_SPIFFS_KEY_POLICY_FETCHED_AT			"policyFetchedAt"
+#define JSON_SPIFFS_KEY_POLICY_PREV_CLASS_ID		"policyPrevClassId"
+#define JSON_SPIFFS_KEY_BOOT_STRIKES				"bootStrikes"
+
+// Device-class plan constants (per F-2, F-6, audit fix #4).
+// Hardcoded so the disconnected-mode TTL fallback never depends on the
+// policy cache or class table existing.
+#ifndef SAFEST_CAP_HS
+#define SAFEST_CAP_HS 5000U
+#endif
+#ifndef POLICY_TTL_SECONDS
+#define POLICY_TTL_SECONDS 3600U
+#endif
+#ifndef POLL_INTERVAL_SECONDS
+#define POLL_INTERVAL_SECONDS 300U
+#endif
+// BOARD_ID is set as a build flag in platformio.ini for production builds
+// (per Setup Step S0). Provide a dev-only default so non-production envs
+// still compile.
+#ifndef BOARD_ID
+#define BOARD_ID "hashcash_nano_v1"
+#endif
+// NTP_SERVER pinned per device-class plan F-4 / audit fix #8.
+#ifndef NTP_SERVER
+#define NTP_SERVER "time.cloudflare.com"
+#endif
 
 // settings
 struct TSettings
@@ -86,6 +116,15 @@ struct TSettings
 	bool saveStats{ DEFAULT_SAVESTATS };
 	bool invertColors{ DEFAULT_INVERTCOLORS };
 	int Brightness{ DEFAULT_BRIGHTNESS };
+	// Per device-class plan F-2 / F-3 / F-5: policy cache fields. Sibling
+	// of activation fields above; persisted via the same NVS layer.
+	char PolicyClassId[12]{ "" };
+	uint32_t PolicyTargetHashrateHs{ SAFEST_CAP_HS };
+	uint64_t PolicyFetchedAt{ 0 };
+	char PolicyPrevClassId[12]{ "" };
+	// Per device-class plan F-9: 3-strikes counter for ESP-IDF rollback.
+	// Reset on factory image install (NVS wipe). Survives normal reboots.
+	uint8_t BootStrikes{ 0 };
 };
 
 #endif // _STORAGE_H_

@@ -118,8 +118,9 @@ void m5stickCDriver_GlobalHashScreen(unsigned long mElapsed)
 {
   coin_data data = getCoinData(mElapsed);
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   M5.Lcd.fillScreen(BLACK);
 

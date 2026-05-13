@@ -11,6 +11,11 @@
 #include "wManager.h"
 #include "mining.h"
 #include "monitor.h"
+#include "drivers/devicePolicy.h"
+
+// Per device-class plan F-9 boot-strikes counter integration.
+extern "C" void recordBootAttempt();
+extern "C" void markBootValidIfHealthy();
 #include "drivers/displays/display.h"
 #include "drivers/storage/SDCard.h"
 #include "ShaTests/nerdSHA_HWTest.h"
@@ -75,6 +80,12 @@ void setup()
   Serial.setTimeout(0);
   delay(SECOND_MS/10);
 
+  // Per device-class plan F-9: increment boot strikes EARLY so a boot
+  // that crashes before the health check still counts toward the
+  // 3-strike rollback. markBootValidIfHealthy() resets to 0 once the
+  // policy task confirms WiFi + backend + pool are reachable.
+  recordBootAttempt();
+
   esp_task_wdt_init(WDT_MINER_TIMEOUT, true);
   // Idle task that would reset WDT never runs, because core 0 gets fully utilized
   disableCore0WDT();
@@ -126,6 +137,11 @@ void setup()
 
   /******** INIT WIFI ************/
   init_WifiManager();
+
+  // Per device-class plan F-4 / F-5: start the policy-fetch task once
+  // WiFi is up. The task internally configures NTP (time.cloudflare.com)
+  // and blocks all backend traffic until clock sync per F-4 strict gate.
+  startPolicyFetchTask();
 
   /******** CREATE TASK TO PRINT SCREEN *****/
   //tft.pushImage(0, 0, MinerWidth, MinerHeight, MinerScreen);

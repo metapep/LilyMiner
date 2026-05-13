@@ -71,8 +71,9 @@ void amoledDisplay_MinerScreen(unsigned long mElapsed)
   // Print background screen
   background.pushImage(0, 0, MinerWidth, MinerHeight, MinerScreen);
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   // Hashrate
   render.setFontSize(FS(35));
@@ -120,8 +121,9 @@ void amoledDisplay_ClockScreen(unsigned long mElapsed)
   // Print background screen
   background.pushImage(0, 0, minerClockWidth, minerClockHeight, minerClockScreen);
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   // Hashrate
   render.setFontSize(FS(25));
@@ -157,8 +159,9 @@ void amoledDisplay_GlobalHashScreen(unsigned long mElapsed)
   // Print background screen
   background.pushImage(0, 0, globalHashWidth, globalHashHeight, globalHashScreen);
 
-  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str());
+  Serial.printf(">>> Completed %s share(s), %s Khashes, avg. hashrate %s KH/s%s\n",
+                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(),
+                data.classId.length() > 0 ? (String(" [") + data.classId + " " + data.classCapKHs + "]").c_str() : "");
 
   // Print BTC Price
   background.setFreeFont(FSSB12);

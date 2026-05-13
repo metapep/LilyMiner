@@ -48,6 +48,14 @@ bool nvMemory::saveConfig(TSettings* Settings)
         json[JSON_SPIFFS_KEY_STATS2NV] = Settings->saveStats;
         json[JSON_SPIFFS_KEY_INVCOLOR] = Settings->invertColors;
         json[JSON_SPIFFS_KEY_BRIGHTNESS] = Settings->Brightness;
+        // Per device-class plan F-2 / F-3 / F-9: persist policy cache and
+        // 3-strikes counter across reboots. Reset on factory image install
+        // (NVS wipe) per plan; survives normal reboots.
+        json[JSON_SPIFFS_KEY_POLICY_CLASS_ID] = Settings->PolicyClassId;
+        json[JSON_SPIFFS_KEY_POLICY_TARGET_HASHRATE_HS] = Settings->PolicyTargetHashrateHs;
+        json[JSON_SPIFFS_KEY_POLICY_FETCHED_AT] = Settings->PolicyFetchedAt;
+        json[JSON_SPIFFS_KEY_POLICY_PREV_CLASS_ID] = Settings->PolicyPrevClassId;
+        json[JSON_SPIFFS_KEY_BOOT_STRIKES] = Settings->BootStrikes;
 
         // Open config file
         File configFile = SPIFFS.open(JSON_CONFIG_FILE, "w");
@@ -135,6 +143,26 @@ bool nvMemory::loadConfig(TSettings* Settings)
                         Settings->Brightness = json[JSON_SPIFFS_KEY_BRIGHTNESS].as<int>();
                     } else {
                         Settings->Brightness = 250;
+                    }
+                    // Per device-class plan F-2 / F-3 / F-9: load policy
+                    // cache and 3-strikes counter. Defaults preserved
+                    // (SAFEST_CAP_HS, BootStrikes=0) if keys absent
+                    // (e.g., first boot after firmware upgrade that
+                    // introduced these fields).
+                    if (json.containsKey(JSON_SPIFFS_KEY_POLICY_CLASS_ID)) {
+                        strcpy(Settings->PolicyClassId, json[JSON_SPIFFS_KEY_POLICY_CLASS_ID] | Settings->PolicyClassId);
+                    }
+                    if (json.containsKey(JSON_SPIFFS_KEY_POLICY_TARGET_HASHRATE_HS)) {
+                        Settings->PolicyTargetHashrateHs = json[JSON_SPIFFS_KEY_POLICY_TARGET_HASHRATE_HS].as<uint32_t>();
+                    }
+                    if (json.containsKey(JSON_SPIFFS_KEY_POLICY_FETCHED_AT)) {
+                        Settings->PolicyFetchedAt = json[JSON_SPIFFS_KEY_POLICY_FETCHED_AT].as<uint64_t>();
+                    }
+                    if (json.containsKey(JSON_SPIFFS_KEY_POLICY_PREV_CLASS_ID)) {
+                        strcpy(Settings->PolicyPrevClassId, json[JSON_SPIFFS_KEY_POLICY_PREV_CLASS_ID] | Settings->PolicyPrevClassId);
+                    }
+                    if (json.containsKey(JSON_SPIFFS_KEY_BOOT_STRIKES)) {
+                        Settings->BootStrikes = json[JSON_SPIFFS_KEY_BOOT_STRIKES].as<uint8_t>();
                     }
                     return true;
                 }
