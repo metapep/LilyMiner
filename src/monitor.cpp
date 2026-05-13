@@ -562,6 +562,19 @@ mining_data getMiningData(unsigned long mElapsed)
   return data;
 }
 
+// Per device-class plan F-10: shared helper that fills classId +
+// classCapKHs on any data struct. Used by getMiningData/getClockData/
+// getCoinData so the class label is available on every screen.
+template <typename T>
+static void fillClassLabel(T& data) {
+  const char* cid = getCurrentClassId();
+  data.classId = cid != nullptr ? String(cid) : String("");
+  uint32_t capHs = getCurrentTargetHs();
+  char capLabel[24] = {0};
+  snprintf(capLabel, sizeof(capLabel), "%lu KH/s", (unsigned long)(capHs / 1000U));
+  data.classCapKHs = String(capLabel);
+}
+
 clock_data getClockData(unsigned long mElapsed)
 {
   clock_data data;
@@ -573,6 +586,7 @@ clock_data getClockData(unsigned long mElapsed)
   data.blockHeight = getBlockHeight();
   data.currentTime = getTime();
   data.currentDate = getDate();
+  fillClassLabel(data);
 
   return data;
 }
@@ -618,6 +632,7 @@ coin_data getCoinData(unsigned long mElapsed)
     ? gData.progressPercent
     : (HALVING_BLOCKS - remainingBlocks) * 100 / HALVING_BLOCKS;
   data.remainingBlocks = String(remainingBlocks) + " BLOCKS";
+  fillClassLabel(data);
 
   return data;
 }

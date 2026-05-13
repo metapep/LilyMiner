@@ -56,6 +56,8 @@ bool waitForNtpSync(uint32_t timeoutMs);
 String buildPolicyApiBase();
 String makeNonce();
 String hmacHexFromEfuse(const String& message);
+const char* canonicalDeviceId();
+void maybeMarkBootValid();
 bool postJson(const String& url, const String& body, String& outResponse);
 bool installOtaArtifact(const String& url, const String& expectedSha256Hex,
                         const String& signatureBase64, const String& releaseId);

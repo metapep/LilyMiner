@@ -93,8 +93,13 @@ typedef struct {
   String currentHashRate;
   String btcPrice;
   String blockHeight;
-  String currentTime;  
+  String currentTime;
   String currentDate;
+  // Per device-class plan F-10: same class label fields as mining_data
+  // so display drivers can render the class tag from any screen, not
+  // just the main mining screen. Empty string when no policy is cached.
+  String classId;
+  String classCapKHs;
 }clock_data;
 
 typedef struct {
@@ -123,6 +128,9 @@ typedef struct {
   String blockHeight;
   float progressPercent;
   String remainingBlocks;
+  // Per device-class plan F-10: class label fields for non-mining screens.
+  String classId;
+  String classCapKHs;
 }coin_data;
 
 typedef struct{
