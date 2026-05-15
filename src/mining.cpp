@@ -173,8 +173,26 @@ static bool resolveDeviceHmacKeyId(hmac_key_id_t* keyIdOut)
   return true;
 #endif
 
+  // Scan high-to-low so the most-recently-burned HMAC_UP block wins.
+  // Provisioning fills slots from the lowest free one upward (slot 0,
+  // then slot 1, etc.), so the highest occupied slot is always the
+  // latest re-provisioning attempt. Picking the latest lets a device
+  // with a botched slot 0 (unknown hex burned in error) recover by
+  // re-provisioning into slot 1 — firmware uses slot 1's fresh key
+  // instead of slot 0's lost one. Up to 6 recovery attempts per device
+  // before all slots are spent.
+  //
+  // The ESP-IDF helper esp_efuse_find_purpose() returns the LOWEST
+  // matching block, which is the opposite of what we want here.
   esp_efuse_block_t keyBlock = EFUSE_BLK_KEY_MAX;
-  if (!esp_efuse_find_purpose(ESP_EFUSE_KEY_PURPOSE_HMAC_UP, &keyBlock)) {
+  for (int slot = (int)HMAC_KEY_MAX - 1; slot >= 0; --slot) {
+    esp_efuse_block_t candidate = (esp_efuse_block_t)((int)EFUSE_BLK_KEY0 + slot);
+    if (esp_efuse_get_key_purpose(candidate) == ESP_EFUSE_KEY_PURPOSE_HMAC_UP) {
+      keyBlock = candidate;
+      break;
+    }
+  }
+  if (keyBlock == EFUSE_BLK_KEY_MAX) {
     Serial.println("Device HMAC key not provisioned: no eFuse key block with HMAC_UP purpose");
     return false;
   }
