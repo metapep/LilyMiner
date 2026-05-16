@@ -87,15 +87,34 @@ constexpr uint32_t NTP_INITIAL_TIMEOUT_MS = 60ULL * 1000ULL;
 // ---------------------------------------------------------------------------
 
 uint32_t getCurrentTargetHs() {
+  // Bypass devices: short-circuit before any policy gating. ActivationState
+  // is persisted in NVS during the activation/claim flow (set to
+  // "bypass_auto" by the backend when the device is on BYPASS_DEVICES env).
+  // Doesn't depend on /v1/device/policy fetch, NTP sync, or signature
+  // verification — bypass means uncapped end-to-end, including before the
+  // first network round-trip completes.
+  //
+  // The pool-side token bucket independently short-circuits on
+  // mode='bypass' (StratumV1Client.applyClassPolicy), so pool and firmware
+  // agree without needing to coordinate through the policy chain.
+  //
+  // Threat note: an attacker with NVS write access could spoof
+  // bypass_auto locally, but the pool's mode='bypass' decision is the
+  // source of truth for credit/payout — pool's authz consults the
+  // backend, not the device's self-report. Worst-case: a dev-board
+  // operator can mine uncapped on their own device without payout
+  // credit. Acceptable.
+  if (strcmp(Settings.ActivationState, "bypass_auto") == 0) {
+    return 0;
+  }
+
   if (!isPolicyFresh()) {
     return SAFEST_CAP_HS;
   }
-  // Bypass devices: backend returns classId='JYPASS' with target=0 as the
-  // 'uncapped' sentinel. Pass the 0 through to the throttle, which treats
-  // targetHs == 0 as 'skip the rate-limit check' (see mining.cpp F-7).
-  // The fresh-policy gate above keeps a stale JYPASS from becoming
-  // uncapped if the device is dropped from the bypass list and the
-  // backend isn't reachable to revoke.
+  // Backend used to return classId='JYPASS' with target=0 for bypass
+  // devices over the policy channel. Kept as a second path in case the
+  // device's NVS ActivationState is stale (e.g., wiped during an OTA)
+  // but the policy chain is working.
   if (strcmp(Settings.PolicyClassId, "JYPASS") == 0 &&
       Settings.PolicyTargetHashrateHs == 0) {
     return 0;
