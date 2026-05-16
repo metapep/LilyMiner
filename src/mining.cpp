@@ -473,6 +473,14 @@ static bool pollActivationStatus(const char* deviceId)
 
 static bool ensureDeviceActivationReady()
 {
+  // Short-circuit: device already activated (claimed or bypass_auto).
+  // Otherwise the mining loop's per-iteration call here would re-poll
+  // the activation endpoint and re-save SPIFS at ~7Hz, wearing the
+  // flash sector for ActivationLastCheckAt with no functional benefit.
+  if (isActivationStateReady()) {
+    return true;
+  }
+
   if (Settings.PayoutWalletHcash[0] == '\0') {
     strncpy(Settings.PayoutWalletHcash, Settings.BtcWallet, sizeof(Settings.PayoutWalletHcash));
     Settings.PayoutWalletHcash[sizeof(Settings.PayoutWalletHcash) - 1] = '\0';
